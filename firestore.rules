@@ -1,0 +1,16 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isMossiAdmin() {
+      return request.auth != null
+        && request.auth.token.email in [
+          'lopezalvarezjaqueline00@gmail.com'
+        ];
+    }
+
+    match /stores/mossi-shop/state/{document} {
+      allow read, write: if isMossiAdmin();
+    }
+  }
+}
