@@ -1,16 +1,16 @@
-<<<<<<< HEAD
 # Mossi Shop
 
-Aplicacion de inventario y pagos para Mossi Shop.
+Aplicacion web de inventario y pagos para Mossi Shop, construida con React,
+Vite, TailwindCSS, Framer Motion, React Icons, Recharts y Supabase.
 
-## Desarrollo
+## Desarrollo local
 
 ```bash
 npm install
 npm run dev
 ```
 
-## Build
+## Build de produccion
 
 ```bash
 npm run build
@@ -18,39 +18,94 @@ npm run build
 
 El sitio de produccion se genera en `dist`.
 
-## Vercel
+## Persistencia con Supabase
 
-El proyecto incluye `vercel.json` con:
+La app usa Supabase como fuente compartida para que dos celulares vean la misma
+informacion. Cuando `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY` estan
+configuradas:
 
-- build command: `npm run build`
-- output directory: `dist`
-- SPA rewrite: `/(.*)` hacia `/index.html`
+- `products`: productos, inventario, estados e imagenes guardadas como data URL.
+- `payments`: pagos, articulos vendidos, montos y metadatos de recibo.
+- `settings`: nombre de tienda, tema y modo oscuro.
 
-## Supabase
+Los comprobantes PDF se generan desde cada pago guardado. El pago conserva
+`receiptNumber` y `receiptGeneratedAt`, por eso el recibo puede volver a
+descargarse desde otro dispositivo.
 
-Configura estas variables en Vercel:
+Si Supabase no esta configurado, la app cae a `localStorage` solo como modo de
+desarrollo local. Para produccion en celular, configura Supabase.
 
-```env
-VITE_SUPABASE_URL=
-VITE_SUPABASE_ANON_KEY=
+### Crear tabla en Supabase
+
+1. Entra a Supabase.
+2. Abre SQL Editor.
+3. Ejecuta completo el archivo `supabase/schema.sql`.
+4. Verifica que exista la tabla `public.mossi_state`.
+
+El SQL tambien intenta agregar la tabla a la publicacion `supabase_realtime`.
+Si Supabase muestra que Realtime no esta activo, activalo manualmente en:
+
+```txt
+Database > Replication > supabase_realtime > mossi_state
 ```
 
-Ejecuta `supabase/schema.sql` en Supabase para crear la tabla de sincronizacion.
-=======
-# React + Vite
+### Variables de entorno
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Copia `.env.example` a `.env.local` para desarrollo local:
 
-Currently, two official plugins are available:
+```bash
+cp .env.example .env.local
+```
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+En `.env.local` y en Vercel debes llenar:
 
-## React Compiler
+```env
+VITE_SUPABASE_URL=https://TU-PROYECTO.supabase.co
+VITE_SUPABASE_ANON_KEY=TU_SUPABASE_ANON_KEY
+```
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+No pegues claves reales en el codigo ni en GitHub. La `anon key` va solo en
+variables de entorno.
 
-## Expanding the ESLint configuration
+## Deploy en Vercel
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
->>>>>>> 99593e9197dbd8527070c5583bf14afb9f75995f
+El proyecto ya incluye `vercel.json` con:
+
+```txt
+Framework Preset: Vite
+Install Command: npm install
+Build Command: npm run build
+Output Directory: dist
+```
+
+Tambien incluye el rewrite necesario para que Vercel no devuelva `404` en rutas
+internas:
+
+```json
+{
+  "source": "/(.*)",
+  "destination": "/index.html"
+}
+```
+
+En Vercel, pega estas variables en:
+
+```txt
+Project Settings > Environment Variables
+```
+
+Variables requeridas:
+
+```env
+VITE_SUPABASE_URL
+VITE_SUPABASE_ANON_KEY
+```
+
+Despues haz redeploy de produccion.
+
+## Administradoras
+
+Las administradoras actuales estan definidas en `src/data/admins.js`.
+No se guardan contrasenas en la tabla publica de Supabase. Si quieres cuentas
+administradas desde Supabase en el futuro, lo correcto es migrar login a
+Supabase Auth y proteger la tabla con usuarios autenticados.

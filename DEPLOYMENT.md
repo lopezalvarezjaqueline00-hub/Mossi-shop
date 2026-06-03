@@ -26,9 +26,11 @@ la app directamente.
 4. Agregar estas variables en Vercel:
 
 ```env
-VITE_SUPABASE_URL=
-VITE_SUPABASE_ANON_KEY=
+VITE_SUPABASE_URL=https://TU-PROYECTO.supabase.co
+VITE_SUPABASE_ANON_KEY=TU_SUPABASE_ANON_KEY
 ```
 
 Con Supabase configurado, productos, pagos y configuracion se sincronizan entre
-celulares. Sin Supabase, la app guarda solo en el navegador de cada dispositivo.
+celulares. Los recibos se regeneran desde los pagos guardados, que incluyen
+`receiptNumber` y `receiptGeneratedAt`. Sin Supabase, la app guarda solo en el
+navegador de cada dispositivo.

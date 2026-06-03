@@ -14,14 +14,18 @@ export function PaymentProvider({ children }) {
 
   const value = useMemo(() => {
     const addPayment = (payment) => {
+      const id = generateId()
+      const createdAt = new Date().toISOString()
       const nextPayment = {
         ...payment,
-        id: generateId(),
+        id,
         amount: Number(payment.amount) || 0,
         type: normalizePaymentType(payment.type),
         paymentDate:
           payment.paymentDate || new Date().toISOString().slice(0, 10),
-        createdAt: new Date().toISOString(),
+        receiptGeneratedAt: createdAt,
+        receiptNumber: String(id).slice(-8).toUpperCase(),
+        createdAt,
       }
 
       setPayments((current) => [nextPayment, ...current])

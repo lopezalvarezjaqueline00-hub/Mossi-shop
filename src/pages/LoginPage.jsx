@@ -81,7 +81,7 @@ export default function LoginPage() {
                 Acceso privado
               </p>
               <h1 className="mt-4 text-[clamp(3.25rem,6.2vw,4.6rem)] font-semibold leading-[0.98] text-[color:var(--ink)]">
-                Bienvenida.
+                Bienvenida
               </h1>
               <p className="mt-6 max-w-md text-lg leading-8 text-[color:var(--muted)]">
                 Entra al panel de Mossi Shop para continuar con el inventario.

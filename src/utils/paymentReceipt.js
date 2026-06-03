@@ -199,7 +199,9 @@ export const downloadPaymentReceipt = (payment, settings = {}) => {
   const paidAmount = Number(payment.amount || 0)
   const pendingAmount = Math.max(purchaseTotal - paidAmount, 0)
   const paymentType = normalizePaymentType(payment.type)
-  const receiptNumber = String(payment.id || Date.now()).slice(-8).toUpperCase()
+  const receiptNumber =
+    payment.receiptNumber ||
+    String(payment.id || Date.now()).slice(-8).toUpperCase()
   let y = 168
 
   drawHeader(doc, storeName, receiptNumber, payment.paymentDate, paymentType)
