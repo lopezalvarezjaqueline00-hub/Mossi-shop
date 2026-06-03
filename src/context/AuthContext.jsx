@@ -11,13 +11,22 @@ export function AuthProvider({ children }) {
 
   const value = useMemo(() => {
     const login = async (email, password) => {
+      const normalizedEmail = email.trim().toLowerCase()
       const admin = ADMINS.find(
-        (item) =>
-          item.email.toLowerCase() === email.trim().toLowerCase(),
+        (item) => item.email.toLowerCase() === normalizedEmail,
       )
 
-      if (isFirebaseConfigured() && !admin) {
+      if (!admin) {
         return false
+      }
+
+      if (admin.password === password) {
+        setUser({
+          email: admin.email,
+          name: admin.name,
+          role: admin.role,
+        })
+        return true
       }
 
       if (isFirebaseConfigured()) {
@@ -49,16 +58,7 @@ export function AuthProvider({ children }) {
         }
       }
 
-      if (!admin || admin.password !== password) {
-        return false
-      }
-
-      setUser({
-        email: admin.email,
-        name: admin.name,
-        role: admin.role,
-      })
-      return true
+      return false
     }
 
     const logout = async () => {
