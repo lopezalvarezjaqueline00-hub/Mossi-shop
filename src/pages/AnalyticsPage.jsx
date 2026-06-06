@@ -25,43 +25,51 @@ const chartColors = ['#9f5f52', '#68735d', '#af8138', '#313234', '#d9a79b']
 export default function AnalyticsPage() {
   const { products } = useProducts()
   const { payments } = usePayments()
+  const safeProducts = useMemo(
+    () => (Array.isArray(products) ? products : []),
+    [products],
+  )
+  const safePayments = useMemo(
+    () => (Array.isArray(payments) ? payments : []),
+    [payments],
+  )
 
   const analytics = useMemo(() => {
     const byCategory = PRODUCT_CATEGORIES.map((category) => ({
       category,
-      productos: products.filter((product) => product.category === category)
+      productos: safeProducts.filter((product) => product.category === category)
         .length,
-      valor: products
+      valor: safeProducts
         .filter((product) => product.category === category)
         .reduce((sum, product) => sum + Number(product.price || 0), 0),
     })).filter((item) => item.productos > 0)
 
     const byStatus = PRODUCT_STATUSES.map((status) => ({
       name: status,
-      value: products.filter((product) => product.status === status).length,
+      value: safeProducts.filter((product) => product.status === status).length,
     }))
 
-    const totalValue = products.reduce(
+    const totalValue = safeProducts.reduce(
       (sum, product) =>
         product.status === 'Vendido' ? sum : sum + Number(product.price || 0),
       0,
     )
-    const soldValue = products
+    const soldValue = safeProducts
       .filter((product) => product.status === 'Vendido')
       .reduce((sum, product) => sum + Number(product.price || 0), 0)
-    const totalReceived = payments.reduce(
+    const totalReceived = safePayments.reduce(
       (sum, payment) => sum + Number(payment.amount || 0),
       0,
     )
     const paymentsByMethod = PAYMENT_METHODS.map((method) => ({
       method,
-      monto: payments
+      monto: safePayments
         .filter((payment) => payment.method === method)
         .reduce((sum, payment) => sum + Number(payment.amount || 0), 0),
     })).filter((item) => item.monto > 0)
     const paymentsByType = PAYMENT_TYPES.map((type) => ({
       type,
-      monto: payments
+      monto: safePayments
         .filter((payment) => normalizePaymentType(payment.type) === type)
         .reduce((sum, payment) => sum + Number(payment.amount || 0), 0),
     })).filter((item) => item.monto > 0)
@@ -75,7 +83,7 @@ export default function AnalyticsPage() {
       paymentsByMethod,
       paymentsByType,
     }
-  }, [payments, products])
+  }, [safePayments, safeProducts])
 
   return (
     <div className="space-y-6">
@@ -94,7 +102,7 @@ export default function AnalyticsPage() {
       <section className="grid gap-4 md:grid-cols-4">
         <StatCard
           label="Productos"
-          value={products.length}
+          value={safeProducts.length}
           helper="Piezas registradas"
           icon={FiPackage}
         />
@@ -113,7 +121,7 @@ export default function AnalyticsPage() {
         <StatCard
           label="Pagos recibidos"
           value={formatCurrency(analytics.totalReceived)}
-          helper={`${payments.length} movimientos`}
+          helper={`${safePayments.length} movimientos`}
           icon={FiDollarSign}
           tone="bg-[color:var(--success)]/10 text-[color:var(--success)]"
         />

@@ -15,9 +15,12 @@ const blankProduct = {
   images: [],
 }
 
+const getProductImages = (product) =>
+  Array.isArray(product?.images) ? product.images : []
+
 const getInitialForm = (product) =>
   product
-    ? { ...blankProduct, ...product, images: product.images || [] }
+    ? { ...blankProduct, ...product, images: getProductImages(product) }
     : { ...blankProduct, images: [] }
 
 const fileToDataUrl = (file) =>
@@ -31,6 +34,10 @@ const fileToDataUrl = (file) =>
 export default function ProductModal({ isOpen, product, onClose, onSave }) {
   const [form, setForm] = useState(() => getInitialForm(product))
   const [dragging, setDragging] = useState(false)
+  const safeImages = useMemo(
+    () => (Array.isArray(form.images) ? form.images : []),
+    [form.images],
+  )
 
   const title = useMemo(
     () => (product ? 'Editar producto' : 'Agregar producto'),
@@ -53,14 +60,19 @@ export default function ProductModal({ isOpen, product, onClose, onSave }) {
     const images = await Promise.all(imageFiles.map(fileToDataUrl))
     setForm((current) => ({
       ...current,
-      images: [...(current.images || []), ...images],
+      images: [
+        ...(Array.isArray(current.images) ? current.images : []),
+        ...images,
+      ],
     }))
   }
 
   const removeImage = (imageIndex) => {
     setForm((current) => ({
       ...current,
-      images: current.images.filter((_, index) => index !== imageIndex),
+      images: (Array.isArray(current.images) ? current.images : []).filter(
+        (_, index) => index !== imageIndex,
+      ),
     }))
   }
 
@@ -76,6 +88,7 @@ export default function ProductModal({ isOpen, product, onClose, onSave }) {
         ...form,
         name: form.name.trim(),
         price: Number(form.price) || 0,
+        images: safeImages,
       })
     } catch (error) {
       console.error('Product modal submit failed:', error)
@@ -279,9 +292,9 @@ export default function ProductModal({ isOpen, product, onClose, onSave }) {
                   </label>
                 </div>
 
-                {form.images?.length ? (
+                {safeImages.length ? (
                   <div className="grid grid-cols-2 gap-3">
-                    {form.images.map((image, index) => (
+                    {safeImages.map((image, index) => (
                       <div
                         key={`${image}-${index}`}
                         className="group relative aspect-square overflow-hidden rounded-lg border border-[color:var(--line)] bg-[color:var(--surface-muted)]"

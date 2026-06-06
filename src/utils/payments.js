@@ -18,13 +18,18 @@ export const normalizePaymentType = (type) => {
 
 export const normalizePaymentItems = (payment) => {
   if (Array.isArray(payment?.items) && payment.items.length) {
-    return payment.items.map((item, index) => ({
-      id: item.id || `${payment.id || 'payment'}-item-${index}`,
-      productId: item.productId || '',
-      name: item.name || item.productName || 'Articulo',
-      quantity: Number(item.quantity) || 1,
-      price: Number(item.price) || 0,
-    }))
+    return payment.items
+      .filter(
+        (item) =>
+          item && typeof item === 'object' && !Array.isArray(item),
+      )
+      .map((item, index) => ({
+        id: item.id || `${payment.id || 'payment'}-item-${index}`,
+        productId: item.productId || '',
+        name: item.name || item.productName || 'Articulo',
+        quantity: Number(item.quantity) || 1,
+        price: Number(item.price) || 0,
+      }))
   }
 
   if (payment?.productName || payment?.productId) {

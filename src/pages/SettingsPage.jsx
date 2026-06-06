@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { FiDownload, FiMoon, FiRefreshCw, FiSave, FiSun } from 'react-icons/fi'
 import { defaultSettings } from '../data/defaultSettings'
 import { usePayments } from '../hooks/usePayments'
@@ -19,6 +19,14 @@ export default function SettingsPage() {
   const { payments } = usePayments()
   const { notify } = useToast()
   const [storeName, setStoreName] = useState(settings.storeName)
+  const safeProducts = useMemo(
+    () => (Array.isArray(products) ? products : []),
+    [products],
+  )
+  const safePayments = useMemo(
+    () => (Array.isArray(payments) ? payments : []),
+    [payments],
+  )
 
   const saveStoreName = () => {
     updateSettings({ storeName: storeName.trim() || defaultSettings.storeName })
@@ -32,8 +40,8 @@ export default function SettingsPage() {
     const payload = {
       exportedAt: new Date().toISOString(),
       settings,
-      products,
-      payments,
+      products: safeProducts,
+      payments: safePayments,
     }
     const blob = new Blob([JSON.stringify(payload, null, 2)], {
       type: 'application/json',

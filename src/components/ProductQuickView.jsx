@@ -17,7 +17,10 @@ export default function ProductQuickView({
     return null
   }
 
-  const images = product.images?.length ? product.images : []
+  const images =
+    Array.isArray(product.images) && product.images.length
+      ? product.images
+      : []
   const mainImage = images[activeImage] || images[0]
 
   return (

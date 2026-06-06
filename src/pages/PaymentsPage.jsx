@@ -73,6 +73,14 @@ export default function PaymentsPage({
   const [editingPayment, setEditingPayment] = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [loading, setLoading] = useState(true)
+  const safePayments = useMemo(
+    () => (Array.isArray(payments) ? payments : []),
+    [payments],
+  )
+  const safeProducts = useMemo(
+    () => (Array.isArray(products) ? products : []),
+    [products],
+  )
 
   useEffect(() => {
     const timeout = window.setTimeout(() => setLoading(false), 280)
@@ -80,14 +88,14 @@ export default function PaymentsPage({
   }, [])
 
   const stats = useMemo(() => {
-    const totalReceived = payments.reduce(
+    const totalReceived = safePayments.reduce(
       (sum, payment) => sum + Number(payment.amount || 0),
       0,
     )
-    const advances = payments
+    const advances = safePayments
       .filter((payment) => normalizePaymentType(payment.type) === 'Anticipo')
       .reduce((sum, payment) => sum + Number(payment.amount || 0), 0)
-    const completePayments = payments
+    const completePayments = safePayments
       .filter(
         (payment) => normalizePaymentType(payment.type) === 'Pago Completo',
       )
@@ -97,14 +105,14 @@ export default function PaymentsPage({
       totalReceived,
       advances,
       completePayments,
-      count: payments.length,
+      count: safePayments.length,
     }
-  }, [payments])
+  }, [safePayments])
 
   const filteredPayments = useMemo(() => {
     const query = normalizeText(filters.query)
 
-    return [...payments]
+    return [...safePayments]
       .filter((payment) => {
         const itemsText = normalizePaymentItems(payment)
           .map((item) => item.name)
@@ -126,7 +134,7 @@ export default function PaymentsPage({
           new Date(`${b.paymentDate}T12:00:00`) -
           new Date(`${a.paymentDate}T12:00:00`),
       )
-  }, [filters, payments])
+  }, [filters, safePayments])
 
   const setFilter = (field, value) => {
     setFilters((current) => ({ ...current, [field]: value }))
@@ -339,7 +347,7 @@ export default function PaymentsPage({
         <PaymentModal
           isOpen={modalOpen}
           payment={editingPayment}
-          products={products}
+          products={safeProducts}
           onClose={closePaymentModal}
           onSave={handleSave}
         />

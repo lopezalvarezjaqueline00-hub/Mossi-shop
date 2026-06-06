@@ -25,34 +25,44 @@ export default function DashboardPage({
   const { products } = useProducts()
   const { payments } = usePayments()
   const [query, setQuery] = useState('')
+  const safeProducts = useMemo(
+    () => (Array.isArray(products) ? products : []),
+    [products],
+  )
+  const safePayments = useMemo(
+    () => (Array.isArray(payments) ? payments : []),
+    [payments],
+  )
 
   const stats = useMemo(() => {
-    const available = products.filter(
+    const available = safeProducts.filter(
       (product) => product.status === 'Disponible',
     )
-    const sold = products.filter((product) => product.status === 'Vendido')
-    const reserved = products.filter((product) => product.status === 'Apartado')
-    const totalValue = products.reduce(
+    const sold = safeProducts.filter((product) => product.status === 'Vendido')
+    const reserved = safeProducts.filter(
+      (product) => product.status === 'Apartado',
+    )
+    const totalValue = safeProducts.reduce(
       (sum, product) =>
         product.status === 'Vendido' ? sum : sum + Number(product.price || 0),
       0,
     )
 
     return {
-      total: products.length,
+      total: safeProducts.length,
       available: available.length,
       sold: sold.length,
       reserved: reserved.length,
       totalValue,
     }
-  }, [products])
+  }, [safeProducts])
 
   const paymentStats = useMemo(() => {
-    const totalReceived = payments.reduce(
+    const totalReceived = safePayments.reduce(
       (sum, payment) => sum + Number(payment.amount || 0),
       0,
     )
-    const recentPayments = [...payments]
+    const recentPayments = [...safePayments]
       .sort(
         (a, b) =>
           new Date(`${b.paymentDate}T12:00:00`) -
@@ -64,14 +74,14 @@ export default function DashboardPage({
       totalReceived,
       recentPayments,
     }
-  }, [payments])
+  }, [safePayments])
 
   const recentProducts = useMemo(
     () =>
-      [...products]
+      [...safeProducts]
         .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
         .slice(0, 5),
-    [products],
+    [safeProducts],
   )
 
   const searchedProducts = useMemo(() => {
@@ -80,10 +90,10 @@ export default function DashboardPage({
       return []
     }
 
-    return products
+    return safeProducts
       .filter((product) => normalizeText(product.name).includes(normalized))
       .slice(0, 4)
-  }, [products, query])
+  }, [safeProducts, query])
 
   return (
     <div className="space-y-8">
@@ -188,7 +198,7 @@ export default function DashboardPage({
         <StatCard
           label="Pagos recibidos"
           value={formatCurrency(paymentStats.totalReceived)}
-          helper={`${payments.length} movimientos`}
+          helper={`${safePayments.length} movimientos`}
           icon={FiCreditCard}
           tone="bg-[color:var(--success)]/10 text-[color:var(--success)]"
         />

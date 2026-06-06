@@ -56,18 +56,26 @@ export default function PaymentModal({
   const [itemDraft, setItemDraft] = useState(blankItem)
   const [formError, setFormError] = useState('')
   const [isSaving, setIsSaving] = useState(false)
+  const safeProducts = useMemo(
+    () => (Array.isArray(products) ? products : []),
+    [products],
+  )
+  const safeItems = useMemo(
+    () => (Array.isArray(form.items) ? form.items : []),
+    [form.items],
+  )
   const title = useMemo(
     () => (payment ? 'Editar pago' : 'Registrar pago'),
     [payment],
   )
   const purchaseTotal = useMemo(
     () =>
-      form.items.reduce(
+      safeItems.reduce(
         (sum, item) =>
           sum + Number(item.price || 0) * Number(item.quantity || 1),
         0,
       ),
-    [form.items],
+    [safeItems],
   )
   const pendingAmount = Math.max(purchaseTotal - Number(form.amount || 0), 0)
 
@@ -89,7 +97,7 @@ export default function PaymentModal({
   }
 
   const handleDraftProductChange = (productId) => {
-    const product = products.find((item) => item.id === productId)
+    const product = safeProducts.find((item) => item.id === productId)
     setItemDraft((current) => ({
       ...current,
       productId,
@@ -114,7 +122,10 @@ export default function PaymentModal({
 
     setForm((current) => ({
       ...current,
-      items: [...current.items, nextItem],
+      items: [
+        ...(Array.isArray(current.items) ? current.items : []),
+        nextItem,
+      ],
     }))
     setItemDraft(blankItem)
     setFormError('')
@@ -123,7 +134,9 @@ export default function PaymentModal({
   const removeItem = (itemId) => {
     setForm((current) => ({
       ...current,
-      items: current.items.filter((item) => item.id !== itemId),
+      items: (Array.isArray(current.items) ? current.items : []).filter(
+        (item) => item.id !== itemId,
+      ),
     }))
   }
 
@@ -150,7 +163,7 @@ export default function PaymentModal({
       return
     }
 
-    const items = form.items
+    const items = safeItems
       .map((item) => ({
         id: item.id || createItemId(),
         productId: item.productId || '',
@@ -295,7 +308,7 @@ export default function PaymentModal({
                       className="focus-ring mt-1 w-full rounded-md border border-[color:var(--line)] bg-[color:var(--canvas)] px-3 py-2.5 text-sm text-[color:var(--ink)] outline-none"
                     >
                       <option value="">Manual</option>
-                      {products.map((product) => (
+                      {safeProducts.map((product) => (
                         <option key={product.id} value={product.id}>
                           {product.name}
                         </option>
@@ -358,9 +371,9 @@ export default function PaymentModal({
                   </button>
                 </div>
 
-                {form.items.length ? (
+                {safeItems.length ? (
                   <div className="mt-4 overflow-hidden rounded-lg border border-[color:var(--line)]">
-                    {form.items.map((item) => (
+                    {safeItems.map((item) => (
                       <div
                         key={item.id}
                         className="grid gap-3 border-b border-[color:var(--line)] bg-[color:var(--canvas)] p-3 last:border-b-0 sm:grid-cols-[1fr_auto_auto]"
