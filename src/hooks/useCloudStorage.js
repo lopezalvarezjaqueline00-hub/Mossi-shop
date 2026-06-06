@@ -1,6 +1,6 @@
 import { onAuthStateChanged } from 'firebase/auth'
 import { doc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   getFirebaseAuth,
   getFirebaseDb,
@@ -19,17 +19,63 @@ const getInitialValue = (initialValue) =>
 const getStateDoc = (db, cloudKey) =>
   doc(db, 'stores', 'mossi-shop', 'state', cloudKey)
 
+const isObjectRecord = (value) =>
+  value !== null && typeof value === 'object' && !Array.isArray(value)
+
+const normalizeStoredValue = (nextValue, fallbackValue) => {
+  if (Array.isArray(fallbackValue)) {
+    return Array.isArray(nextValue)
+      ? nextValue.filter((item) => isObjectRecord(item))
+      : fallbackValue
+  }
+
+  if (isObjectRecord(fallbackValue)) {
+    return isObjectRecord(nextValue) ? nextValue : fallbackValue
+  }
+
+  return nextValue ?? fallbackValue
+}
+
+const notifyStorageError = (cloudKey, message) => {
+  window.dispatchEvent(
+    new CustomEvent('mossi-storage-error', {
+      detail: {
+        message: `No se pudo guardar ${cloudKey} en Supabase: ${message}`,
+      },
+    }),
+  )
+}
+
 export function useCloudStorage(key, initialValue, cloudKey) {
   const [value, setValue] = useState(() => {
     const fallback = getInitialValue(initialValue)
-    return safeJsonParse(localStorage.getItem(key), fallback)
+    return normalizeStoredValue(safeJsonParse(localStorage.getItem(key), fallback), fallback)
   })
   const lastRemoteValue = useRef(null)
   const cloudReady = useRef(false)
 
+  const fallbackValue = useMemo(() => getInitialValue(initialValue), [initialValue])
+  const normalizedValue = useMemo(
+    () => normalizeStoredValue(value, fallbackValue),
+    [fallbackValue, value],
+  )
+
+  const setSafeValue = useCallback(
+    (nextValue) => {
+      setValue((current) => {
+        const safeCurrent = normalizeStoredValue(current, fallbackValue)
+        const resolvedValue =
+          typeof nextValue === 'function' ? nextValue(safeCurrent) : nextValue
+
+        return normalizeStoredValue(resolvedValue, safeCurrent)
+      })
+    },
+    [fallbackValue],
+  )
+
   useEffect(() => {
-    localStorage.setItem(key, JSON.stringify(value))
-  }, [key, value])
+    localStorage.setItem(key, JSON.stringify(normalizedValue))
+  }, [key, normalizedValue])
 
   useEffect(() => {
     if (!isSupabaseConfigured()) {
@@ -46,9 +92,9 @@ export function useCloudStorage(key, initialValue, cloudKey) {
     cloudReady.current = false
 
     const syncInitialValue = async () => {
-      const localValue = safeJsonParse(
-        localStorage.getItem(key),
-        getInitialValue(initialValue),
+      const localValue = normalizeStoredValue(
+        safeJsonParse(localStorage.getItem(key), fallbackValue),
+        fallbackValue,
       )
 
       const { data, error } = await supabase
@@ -63,12 +109,13 @@ export function useCloudStorage(key, initialValue, cloudKey) {
 
       if (error) {
         console.warn(`Supabase sync disabled for ${cloudKey}:`, error.message)
+        notifyStorageError(cloudKey, error.message)
         return
       }
 
       if (data) {
-        const nextValue = data.value ?? getInitialValue(initialValue)
-        lastRemoteValue.current = JSON.stringify(nextValue)
+        const nextValue = normalizeStoredValue(data.value, localValue)
+        lastRemoteValue.current = JSON.stringify(data.value)
         setValue(nextValue)
         cloudReady.current = true
         return
@@ -85,9 +132,12 @@ export function useCloudStorage(key, initialValue, cloudKey) {
           value: localValue,
           updated_at: new Date().toISOString(),
         })
+        .select('value')
+        .single()
 
       if (upsertError) {
         console.warn(`Supabase sync disabled for ${cloudKey}:`, upsertError.message)
+        notifyStorageError(cloudKey, upsertError.message)
       }
     }
 
@@ -110,8 +160,12 @@ export function useCloudStorage(key, initialValue, cloudKey) {
             return
           }
 
-          lastRemoteValue.current = JSON.stringify(nextValue)
-          setValue(nextValue)
+          setValue((current) => {
+            const fallback = normalizeStoredValue(current, fallbackValue)
+            const safeNextValue = normalizeStoredValue(nextValue, fallback)
+            lastRemoteValue.current = JSON.stringify(nextValue)
+            return safeNextValue
+          })
           cloudReady.current = true
         },
       )
@@ -121,7 +175,7 @@ export function useCloudStorage(key, initialValue, cloudKey) {
       isMounted = false
       supabase.removeChannel(channel)
     }
-  }, [cloudKey, initialValue, key])
+  }, [cloudKey, fallbackValue, key])
 
   useEffect(() => {
     if (isSupabaseConfigured() || !isFirebaseConfigured()) {
@@ -155,16 +209,19 @@ export function useCloudStorage(key, initialValue, cloudKey) {
         stateDoc,
         async (snapshot) => {
           if (snapshot.exists()) {
-            const nextValue = snapshot.data().value ?? getInitialValue(initialValue)
+            const nextValue = normalizeStoredValue(
+              snapshot.data().value,
+              fallbackValue,
+            )
             lastRemoteValue.current = JSON.stringify(nextValue)
             setValue(nextValue)
             cloudReady.current = true
             return
           }
 
-          const localValue = safeJsonParse(
-            localStorage.getItem(key),
-            getInitialValue(initialValue),
+          const localValue = normalizeStoredValue(
+            safeJsonParse(localStorage.getItem(key), fallbackValue),
+            fallbackValue,
           )
           lastRemoteValue.current = JSON.stringify(localValue)
           cloudReady.current = true
@@ -176,6 +233,7 @@ export function useCloudStorage(key, initialValue, cloudKey) {
         },
         (error) => {
           console.warn(`Cloud sync disabled for ${cloudKey}:`, error.message)
+          notifyStorageError(cloudKey, error.message)
         },
       )
     })
@@ -186,14 +244,14 @@ export function useCloudStorage(key, initialValue, cloudKey) {
         unsubscribeSnapshot()
       }
     }
-  }, [cloudKey, initialValue, key])
+  }, [cloudKey, fallbackValue, key])
 
   useEffect(() => {
     if (!cloudReady.current) {
       return undefined
     }
 
-    const serializedValue = JSON.stringify(value)
+    const serializedValue = JSON.stringify(normalizedValue)
 
     if (serializedValue === lastRemoteValue.current) {
       return undefined
@@ -207,18 +265,27 @@ export function useCloudStorage(key, initialValue, cloudKey) {
           return
         }
 
-        const { error } = await supabase.from(SUPABASE_STATE_TABLE).upsert({
-          key: cloudKey,
-          value,
-          updated_at: new Date().toISOString(),
-        })
+        const { data, error } = await supabase
+          .from(SUPABASE_STATE_TABLE)
+          .upsert({
+            key: cloudKey,
+            value: normalizedValue,
+            updated_at: new Date().toISOString(),
+          })
+          .select('value')
+          .single()
 
         if (error) {
           console.warn(`Supabase write failed for ${cloudKey}:`, error.message)
+          notifyStorageError(cloudKey, error.message)
           return
         }
 
-        lastRemoteValue.current = serializedValue
+        const savedValue = normalizeStoredValue(
+          data?.value ?? normalizedValue,
+          normalizedValue,
+        )
+        lastRemoteValue.current = JSON.stringify(savedValue)
         return
       }
 
@@ -234,7 +301,7 @@ export function useCloudStorage(key, initialValue, cloudKey) {
       await setDoc(
         stateDoc,
         {
-          value,
+          value: normalizedValue,
           updatedAt: serverTimestamp(),
           updatedBy: firebaseUser.email,
         },
@@ -244,7 +311,7 @@ export function useCloudStorage(key, initialValue, cloudKey) {
     }, 350)
 
     return () => window.clearTimeout(timeout)
-  }, [cloudKey, value])
+  }, [cloudKey, normalizedValue])
 
-  return [value, setValue]
+  return [normalizedValue, setSafeValue]
 }
