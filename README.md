@@ -28,6 +28,11 @@ configuradas:
 - `payments`: pagos, articulos vendidos, montos y metadatos de recibo.
 - `settings`: nombre de tienda, tema y modo oscuro.
 
+Cada dispositivo autorizado lee y escribe esas mismas filas de
+`public.mossi_state`, asi que el inventario, pagos y configuracion se mantienen
+compartidos entre administradoras. Con Realtime activo, los cambios recibidos
+por Supabase se reflejan en la otra sesion sin recargar.
+
 Los comprobantes PDF se generan desde cada pago guardado. El pago conserva
 `receiptNumber` y `receiptGeneratedAt`, por eso el recibo puede volver a
 descargarse desde otro dispositivo.
@@ -106,6 +111,8 @@ Despues haz redeploy de produccion.
 ## Administradoras
 
 Las administradoras actuales estan definidas en `src/data/admins.js`.
+Pueden iniciar sesion desde celulares o computadoras diferentes y ver la misma
+informacion compartida en Supabase.
 No se guardan contrasenas en la tabla publica de Supabase. Si quieres cuentas
 administradas desde Supabase en el futuro, lo correcto es migrar login a
 Supabase Auth y proteger la tabla con usuarios autenticados.
