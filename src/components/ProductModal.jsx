@@ -71,11 +71,15 @@ export default function ProductModal({ isOpen, product, onClose, onSave }) {
       return
     }
 
-    onSave({
-      ...form,
-      name: form.name.trim(),
-      price: Number(form.price) || 0,
-    })
+    try {
+      onSave({
+        ...form,
+        name: form.name.trim(),
+        price: Number(form.price) || 0,
+      })
+    } catch (error) {
+      console.error('Product modal submit failed:', error)
+    }
   }
 
   return (

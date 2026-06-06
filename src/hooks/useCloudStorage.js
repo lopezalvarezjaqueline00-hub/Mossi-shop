@@ -46,10 +46,13 @@ const notifyStorageError = (cloudKey, message) => {
   )
 }
 
+const getLocalValue = (key, fallbackValue) =>
+  normalizeStoredValue(safeJsonParse(localStorage.getItem(key), fallbackValue), fallbackValue)
+
 export function useCloudStorage(key, initialValue, cloudKey) {
   const [value, setValue] = useState(() => {
     const fallback = getInitialValue(initialValue)
-    return normalizeStoredValue(safeJsonParse(localStorage.getItem(key), fallback), fallback)
+    return getLocalValue(key, fallback)
   })
   const lastRemoteValue = useRef(null)
   const cloudReady = useRef(false)
@@ -92,52 +95,60 @@ export function useCloudStorage(key, initialValue, cloudKey) {
     cloudReady.current = false
 
     const syncInitialValue = async () => {
-      const localValue = normalizeStoredValue(
-        safeJsonParse(localStorage.getItem(key), fallbackValue),
-        fallbackValue,
-      )
+      try {
+        const localValue = getLocalValue(key, fallbackValue)
 
-      const { data, error } = await supabase
-        .from(SUPABASE_STATE_TABLE)
-        .select('value')
-        .eq('key', cloudKey)
-        .maybeSingle()
+        const { data, error } = await supabase
+          .from(SUPABASE_STATE_TABLE)
+          .select('value')
+          .eq('key', cloudKey)
+          .maybeSingle()
 
-      if (!isMounted) {
-        return
-      }
+        if (!isMounted) {
+          return
+        }
 
-      if (error) {
-        console.warn(`Supabase sync disabled for ${cloudKey}:`, error.message)
-        notifyStorageError(cloudKey, error.message)
-        return
-      }
+        if (error) {
+          console.warn(`Supabase sync disabled for ${cloudKey}:`, error.message)
+          notifyStorageError(cloudKey, error.message)
+          return
+        }
 
-      if (data) {
-        const nextValue = normalizeStoredValue(data.value, localValue)
-        lastRemoteValue.current = JSON.stringify(data.value)
-        setValue(nextValue)
+        if (data) {
+          const remoteFallback = Array.isArray(fallbackValue)
+            ? []
+            : localValue
+          const nextValue = normalizeStoredValue(data.value, remoteFallback)
+          lastRemoteValue.current = JSON.stringify(data.value)
+          setValue(nextValue)
+          cloudReady.current = true
+          return
+        }
+
+        const serializedLocalValue = JSON.stringify(localValue)
+        lastRemoteValue.current = serializedLocalValue
         cloudReady.current = true
-        return
-      }
 
-      const serializedLocalValue = JSON.stringify(localValue)
-      lastRemoteValue.current = serializedLocalValue
-      cloudReady.current = true
+        const { error: upsertError } = await supabase
+          .from(SUPABASE_STATE_TABLE)
+          .upsert({
+            key: cloudKey,
+            value: localValue,
+            updated_at: new Date().toISOString(),
+          })
+          .select('value')
+          .single()
 
-      const { error: upsertError } = await supabase
-        .from(SUPABASE_STATE_TABLE)
-        .upsert({
-          key: cloudKey,
-          value: localValue,
-          updated_at: new Date().toISOString(),
-        })
-        .select('value')
-        .single()
-
-      if (upsertError) {
-        console.warn(`Supabase sync disabled for ${cloudKey}:`, upsertError.message)
-        notifyStorageError(cloudKey, upsertError.message)
+        if (upsertError) {
+          console.warn(
+            `Supabase sync disabled for ${cloudKey}:`,
+            upsertError.message,
+          )
+          notifyStorageError(cloudKey, upsertError.message)
+        }
+      } catch (error) {
+        console.error(`Supabase sync crashed for ${cloudKey}:`, error)
+        notifyStorageError(cloudKey, error.message || 'Error desconocido')
       }
     }
 
@@ -162,7 +173,8 @@ export function useCloudStorage(key, initialValue, cloudKey) {
 
           setValue((current) => {
             const fallback = normalizeStoredValue(current, fallbackValue)
-            const safeNextValue = normalizeStoredValue(nextValue, fallback)
+            const remoteFallback = Array.isArray(fallbackValue) ? [] : fallback
+            const safeNextValue = normalizeStoredValue(nextValue, remoteFallback)
             lastRemoteValue.current = JSON.stringify(nextValue)
             return safeNextValue
           })
@@ -219,10 +231,7 @@ export function useCloudStorage(key, initialValue, cloudKey) {
             return
           }
 
-          const localValue = normalizeStoredValue(
-            safeJsonParse(localStorage.getItem(key), fallbackValue),
-            fallbackValue,
-          )
+          const localValue = getLocalValue(key, fallbackValue)
           lastRemoteValue.current = JSON.stringify(localValue)
           cloudReady.current = true
           await setDoc(stateDoc, {
@@ -258,60 +267,65 @@ export function useCloudStorage(key, initialValue, cloudKey) {
     }
 
     const timeout = window.setTimeout(async () => {
-      if (isSupabaseConfigured()) {
-        const supabase = getSupabaseClient()
+      try {
+        if (isSupabaseConfigured()) {
+          const supabase = getSupabaseClient()
 
-        if (!supabase) {
+          if (!supabase) {
+            return
+          }
+
+          const { data, error } = await supabase
+            .from(SUPABASE_STATE_TABLE)
+            .upsert({
+              key: cloudKey,
+              value: normalizedValue,
+              updated_at: new Date().toISOString(),
+            })
+            .select('value')
+            .single()
+
+          if (error) {
+            console.warn(`Supabase write failed for ${cloudKey}:`, error.message)
+            notifyStorageError(cloudKey, error.message)
+            return
+          }
+
+          const savedValue = normalizeStoredValue(
+            data?.value ?? normalizedValue,
+            Array.isArray(fallbackValue) ? [] : normalizedValue,
+          )
+          lastRemoteValue.current = JSON.stringify(savedValue)
           return
         }
 
-        const { data, error } = await supabase
-          .from(SUPABASE_STATE_TABLE)
-          .upsert({
-            key: cloudKey,
+        const auth = getFirebaseAuth()
+        const db = getFirebaseDb()
+        const firebaseUser = auth?.currentUser
+
+        if (!db || !firebaseUser) {
+          return
+        }
+
+        const stateDoc = getStateDoc(db, cloudKey)
+        await setDoc(
+          stateDoc,
+          {
             value: normalizedValue,
-            updated_at: new Date().toISOString(),
-          })
-          .select('value')
-          .single()
-
-        if (error) {
-          console.warn(`Supabase write failed for ${cloudKey}:`, error.message)
-          notifyStorageError(cloudKey, error.message)
-          return
-        }
-
-        const savedValue = normalizeStoredValue(
-          data?.value ?? normalizedValue,
-          normalizedValue,
+            updatedAt: serverTimestamp(),
+            updatedBy: firebaseUser.email,
+          },
+          { merge: true },
         )
-        lastRemoteValue.current = JSON.stringify(savedValue)
-        return
+        lastRemoteValue.current = serializedValue
+      } catch (error) {
+        console.error(`Cloud write crashed for ${cloudKey}:`, error)
+        notifyStorageError(cloudKey, error.message || 'Error desconocido')
       }
-
-      const auth = getFirebaseAuth()
-      const db = getFirebaseDb()
-      const firebaseUser = auth?.currentUser
-
-      if (!db || !firebaseUser) {
-        return
-      }
-
-      const stateDoc = getStateDoc(db, cloudKey)
-      await setDoc(
-        stateDoc,
-        {
-          value: normalizedValue,
-          updatedAt: serverTimestamp(),
-          updatedBy: firebaseUser.email,
-        },
-        { merge: true },
-      )
-      lastRemoteValue.current = serializedValue
     }, 350)
 
     return () => window.clearTimeout(timeout)
-  }, [cloudKey, normalizedValue])
+  }, [cloudKey, fallbackValue, normalizedValue])
 
   return [normalizedValue, setSafeValue]
 }

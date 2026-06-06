@@ -38,6 +38,11 @@ export default function ProductsPage({
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [loading, setLoading] = useState(true)
 
+  const safeProducts = useMemo(
+    () => (Array.isArray(products) ? products : []),
+    [products],
+  )
+
   useEffect(() => {
     const timeout = window.setTimeout(() => setLoading(false), 420)
     return () => window.clearTimeout(timeout)
@@ -47,16 +52,16 @@ export default function ProductsPage({
     () =>
       Math.max(
         1000,
-        ...products.map((product) => Number(product.price) || 0),
+        ...safeProducts.map((product) => Number(product.price) || 0),
       ),
-    [products],
+    [safeProducts],
   )
 
   const filteredProducts = useMemo(() => {
     const query = normalizeText(filters.query)
     const maxPrice = filters.maxPrice || maxInventoryPrice
 
-    return products.filter((product) => {
+    return safeProducts.filter((product) => {
       const matchesQuery = query
         ? normalizeText(product.name).includes(query)
         : true
@@ -68,7 +73,7 @@ export default function ProductsPage({
 
       return matchesQuery && matchesCategory && matchesStatus && matchesPrice
     })
-  }, [filters, maxInventoryPrice, products])
+  }, [filters, maxInventoryPrice, safeProducts])
 
   const handleCreate = () => {
     setEditingProduct(null)
@@ -89,21 +94,30 @@ export default function ProductsPage({
   }
 
   const handleSave = (payload) => {
-    if (editingProduct) {
-      updateProduct(editingProduct.id, payload)
+    try {
+      if (editingProduct) {
+        updateProduct(editingProduct.id, payload)
+        notify({
+          title: 'Producto actualizado',
+          message: `${payload.name} quedo guardado.`,
+        })
+      } else {
+        addProduct(payload)
+        notify({
+          title: 'Producto agregado',
+          message: `${payload.name} ya esta en inventario.`,
+        })
+      }
+
+      closeProductModal()
+    } catch (error) {
+      console.error('Product save handler failed:', error)
       notify({
-        title: 'Producto actualizado',
-        message: `${payload.name} quedo guardado.`,
-      })
-    } else {
-      addProduct(payload)
-      notify({
-        title: 'Producto agregado',
-        message: `${payload.name} ya esta en inventario.`,
+        title: 'Error al guardar producto',
+        message: 'No se pudo guardar. Revisa Supabase o intenta de nuevo.',
+        type: 'error',
       })
     }
-
-    closeProductModal()
   }
 
   const confirmDelete = () => {

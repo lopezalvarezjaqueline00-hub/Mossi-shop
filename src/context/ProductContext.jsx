@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { PRODUCT_STATUSES, initialProducts } from '../data/initialProducts'
+import { PRODUCT_STATUSES } from '../data/initialProducts'
 import { useCloudStorage } from '../hooks/useCloudStorage'
 import { generateId, STORAGE_KEYS } from '../utils/storage'
 import { ProductContext } from './ProductContextValue'
@@ -7,63 +7,95 @@ import { ProductContext } from './ProductContextValue'
 const ensureProductList = (products) =>
   Array.isArray(products) ? products.filter(Boolean) : []
 
-const normalizeProduct = (product, fallbackId) => ({
-  id: product.id || fallbackId || generateId(),
-  name: String(product.name || 'Producto sin nombre').trim(),
-  category: product.category || 'Ropa',
-  description: product.description || '',
-  price: Number(product.price) || 0,
-  size: product.size || '',
-  color: product.color || '',
-  status: PRODUCT_STATUSES.includes(product.status)
-    ? product.status
-    : 'Disponible',
-  notes: product.notes || '',
-  createdAt: product.createdAt || new Date().toISOString(),
-  images: Array.isArray(product.images) ? product.images.filter(Boolean) : [],
-})
+const normalizeProduct = (product = {}, fallbackId) => {
+  const safeProduct =
+    product && typeof product === 'object' && !Array.isArray(product)
+      ? product
+      : {}
+
+  return {
+    id: safeProduct.id || fallbackId || generateId(),
+    name: String(safeProduct.name || 'Producto sin nombre').trim(),
+    category: safeProduct.category || 'Ropa',
+    description: safeProduct.description || '',
+    price: Number(safeProduct.price) || 0,
+    size: safeProduct.size || '',
+    color: safeProduct.color || '',
+    status: PRODUCT_STATUSES.includes(safeProduct.status)
+      ? safeProduct.status
+      : 'Disponible',
+    notes: safeProduct.notes || '',
+    createdAt: safeProduct.createdAt || new Date().toISOString(),
+    images: Array.isArray(safeProduct.images)
+      ? safeProduct.images.filter(Boolean)
+      : [],
+  }
+}
 
 export function ProductProvider({ children }) {
   const [products, setProducts] = useCloudStorage(
     STORAGE_KEYS.products,
-    initialProducts,
+    [],
     'products',
   )
 
   const value = useMemo(() => {
     const addProduct = (product) => {
-      const nextProduct = normalizeProduct({
-        ...product,
-        id: generateId(),
-        createdAt: new Date().toISOString(),
-      })
+      try {
+        const nextProduct = normalizeProduct({
+          ...(product && typeof product === 'object' ? product : {}),
+          id: generateId(),
+          createdAt: new Date().toISOString(),
+        })
 
-      setProducts((current) => [nextProduct, ...ensureProductList(current)])
-      return nextProduct
+        setProducts((current) => {
+          const safeCurrent = ensureProductList(current)
+          return [nextProduct, ...safeCurrent]
+        })
+        return nextProduct
+      } catch (error) {
+        console.error('Product save failed:', error)
+        throw error
+      }
     }
 
     const updateProduct = (id, updates) => {
-      setProducts((current) =>
-        ensureProductList(current).map((product) =>
-          product.id === id
-            ? normalizeProduct({ ...product, ...updates, id })
-            : product,
-        ),
-      )
+      try {
+        setProducts((current) =>
+          ensureProductList(current).map((product) =>
+            product.id === id
+              ? normalizeProduct({ ...product, ...updates, id })
+              : product,
+          ),
+        )
+      } catch (error) {
+        console.error('Product update failed:', error)
+        throw error
+      }
     }
 
     const deleteProduct = (id) => {
-      setProducts((current) =>
-        ensureProductList(current).filter((product) => product.id !== id),
-      )
+      try {
+        setProducts((current) =>
+          ensureProductList(current).filter((product) => product.id !== id),
+        )
+      } catch (error) {
+        console.error('Product delete failed:', error)
+        throw error
+      }
     }
 
     const updateStatus = (id, status) => {
-      setProducts((current) =>
-        ensureProductList(current).map((product) =>
-          product.id === id ? { ...product, status } : product,
-        ),
-      )
+      try {
+        setProducts((current) =>
+          ensureProductList(current).map((product) =>
+            product.id === id ? { ...product, status } : product,
+          ),
+        )
+      } catch (error) {
+        console.error('Product status update failed:', error)
+        throw error
+      }
     }
 
     const safeProducts = ensureProductList(products).map((product, index) =>
