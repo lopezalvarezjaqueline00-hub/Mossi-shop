@@ -36,6 +36,43 @@ const normalizeStoredValue = (nextValue, fallbackValue) => {
   return nextValue ?? fallbackValue
 }
 
+const getRecordKey = (item) => item?.id || JSON.stringify(item)
+
+const mergeStoredValues = (remoteValue, pendingValue, fallbackValue, baseValue) => {
+  if (Array.isArray(fallbackValue)) {
+    const remoteList = normalizeStoredValue(remoteValue, [])
+    const pendingList = normalizeStoredValue(pendingValue, [])
+    const baseList = normalizeStoredValue(baseValue, [])
+    const pendingKeys = new Set(pendingList.map(getRecordKey))
+    const deletedKeys = new Set(
+      baseList
+        .map(getRecordKey)
+        .filter((key) => key && !pendingKeys.has(key)),
+    )
+    const seenKeys = new Set()
+
+    return [...pendingList, ...remoteList].filter((item) => {
+      const key = getRecordKey(item)
+
+      if (!key || seenKeys.has(key) || deletedKeys.has(key)) {
+        return false
+      }
+
+      seenKeys.add(key)
+      return true
+    })
+  }
+
+  if (isObjectRecord(fallbackValue)) {
+    return {
+      ...normalizeStoredValue(remoteValue, fallbackValue),
+      ...normalizeStoredValue(pendingValue, fallbackValue),
+    }
+  }
+
+  return normalizeStoredValue(pendingValue, fallbackValue)
+}
+
 const notifyStorageError = (cloudKey, message) => {
   window.dispatchEvent(
     new CustomEvent('mossi-storage-error', {
@@ -50,14 +87,17 @@ const getLocalValue = (key, fallbackValue) =>
   normalizeStoredValue(safeJsonParse(localStorage.getItem(key), fallbackValue), fallbackValue)
 
 export function useCloudStorage(key, initialValue, cloudKey) {
-  const [value, setValue] = useState(() => {
-    const fallback = getInitialValue(initialValue)
-    return getLocalValue(key, fallback)
-  })
+  const fallbackValue = useMemo(() => getInitialValue(initialValue), [initialValue])
+  const initialLocalValue = useMemo(
+    () => getLocalValue(key, fallbackValue),
+    [fallbackValue, key],
+  )
+  const [value, setValue] = useState(initialLocalValue)
+  const initialLocalValueRef = useRef(initialLocalValue)
   const lastRemoteValue = useRef(null)
   const cloudReady = useRef(false)
+  const pendingLocalValue = useRef(null)
 
-  const fallbackValue = useMemo(() => getInitialValue(initialValue), [initialValue])
   const normalizedValue = useMemo(
     () => normalizeStoredValue(value, fallbackValue),
     [fallbackValue, value],
@@ -69,8 +109,16 @@ export function useCloudStorage(key, initialValue, cloudKey) {
         const safeCurrent = normalizeStoredValue(current, fallbackValue)
         const resolvedValue =
           typeof nextValue === 'function' ? nextValue(safeCurrent) : nextValue
+        const safeResolvedValue = normalizeStoredValue(
+          resolvedValue,
+          safeCurrent,
+        )
 
-        return normalizeStoredValue(resolvedValue, safeCurrent)
+        if (!cloudReady.current) {
+          pendingLocalValue.current = safeResolvedValue
+        }
+
+        return safeResolvedValue
       })
     },
     [fallbackValue],
@@ -118,22 +166,65 @@ export function useCloudStorage(key, initialValue, cloudKey) {
           const remoteFallback = Array.isArray(fallbackValue)
             ? []
             : localValue
-          const nextValue = normalizeStoredValue(data.value, remoteFallback)
+          const nextValue =
+            pendingLocalValue.current === null
+              ? normalizeStoredValue(data.value, remoteFallback)
+              : mergeStoredValues(
+                  data.value,
+                  pendingLocalValue.current,
+                  fallbackValue,
+                  initialLocalValueRef.current,
+                )
           lastRemoteValue.current = JSON.stringify(data.value)
           setValue(nextValue)
           cloudReady.current = true
+
+          if (pendingLocalValue.current !== null) {
+            pendingLocalValue.current = null
+            const { data: savedData, error: pendingWriteError } = await supabase
+              .from(SUPABASE_STATE_TABLE)
+              .upsert({
+                key: cloudKey,
+                value: nextValue,
+                updated_at: new Date().toISOString(),
+              })
+              .select('value')
+              .single()
+
+            if (pendingWriteError) {
+              console.warn(
+                `Supabase pending write failed for ${cloudKey}:`,
+                pendingWriteError.message,
+              )
+              notifyStorageError(cloudKey, pendingWriteError.message)
+              return
+            }
+
+            lastRemoteValue.current = JSON.stringify(
+              normalizeStoredValue(
+                savedData?.value ?? nextValue,
+                Array.isArray(fallbackValue) ? [] : nextValue,
+              ),
+            )
+          }
+
           return
         }
 
-        const serializedLocalValue = JSON.stringify(localValue)
+        const nextLocalValue =
+          pendingLocalValue.current === null
+            ? localValue
+            : normalizeStoredValue(pendingLocalValue.current, localValue)
+        const serializedLocalValue = JSON.stringify(nextLocalValue)
         lastRemoteValue.current = serializedLocalValue
         cloudReady.current = true
+        pendingLocalValue.current = null
 
         const { error: upsertError } = await supabase
           .from(SUPABASE_STATE_TABLE)
           .upsert({
             key: cloudKey,
-            value: localValue,
+            value: nextLocalValue,
             updated_at: new Date().toISOString(),
           })
           .select('value')
@@ -296,6 +387,7 @@ export function useCloudStorage(key, initialValue, cloudKey) {
             Array.isArray(fallbackValue) ? [] : normalizedValue,
           )
           lastRemoteValue.current = JSON.stringify(savedValue)
+          pendingLocalValue.current = null
           return
         }
 
