@@ -20,13 +20,18 @@ const normalizePayment = (payment = {}, fallbackId) => {
   const id = safePayment.id || fallbackId || generateId()
   const createdAt = safePayment.createdAt || new Date().toISOString()
   const items = Array.isArray(safePayment.items)
-    ? safePayment.items.filter(Boolean).map((item, index) => ({
-        id: item.id || `${id}-item-${index}`,
-        productId: item.productId || '',
-        name: item.name || item.productName || 'Articulo',
-        quantity: Number(item.quantity) || 1,
-        price: Number(item.price) || 0,
-      }))
+    ? safePayment.items
+        .filter(
+          (item) =>
+            item && typeof item === 'object' && !Array.isArray(item),
+        )
+        .map((item, index) => ({
+          id: item.id || `${id}-item-${index}`,
+          productId: item.productId || '',
+          name: item.name || item.productName || 'Articulo',
+          quantity: Number(item.quantity) || 1,
+          price: Number(item.price) || 0,
+        }))
     : []
 
   return {
@@ -35,6 +40,8 @@ const normalizePayment = (payment = {}, fallbackId) => {
     clientName: safePayment.clientName || '',
     productId: safePayment.productId || '',
     productName: safePayment.productName || items[0]?.name || '',
+    clientId: safePayment.clientId || '',
+    saleId: safePayment.saleId || '',
     items,
     purchaseTotal:
       Number(safePayment.purchaseTotal) ||
@@ -44,6 +51,8 @@ const normalizePayment = (payment = {}, fallbackId) => {
         0,
       ),
     amount: Number(safePayment.amount) || 0,
+    balanceBefore: Number(safePayment.balanceBefore) || 0,
+    balanceAfter: Number(safePayment.balanceAfter) || 0,
     method: safePayment.method || 'Transferencia',
     type: normalizePaymentType(safePayment.type),
     paymentDate:
@@ -52,6 +61,7 @@ const normalizePayment = (payment = {}, fallbackId) => {
     receiptNumber:
       safePayment.receiptNumber || String(id).slice(-8).toUpperCase(),
     notes: safePayment.notes || '',
+    kind: safePayment.kind || 'payment',
     createdAt,
   }
 }
@@ -65,8 +75,8 @@ export function PaymentProvider({ children }) {
 
   const value = useMemo(() => {
     const addPayment = (payment) => {
-      const id = generateId()
-      const createdAt = new Date().toISOString()
+      const id = payment?.id || generateId()
+      const createdAt = payment?.createdAt || new Date().toISOString()
       const nextPayment = normalizePayment({
         ...payment,
         id,
@@ -95,6 +105,8 @@ export function PaymentProvider({ children }) {
       )
     }
 
+    const restorePayment = (payment) => addPayment(payment)
+
     const safePayments = ensurePaymentList(payments).map((payment, index) =>
       normalizePayment(payment, `payment-${index}`),
     )
@@ -104,6 +116,7 @@ export function PaymentProvider({ children }) {
       addPayment,
       updatePayment,
       deletePayment,
+      restorePayment,
     }
   }, [payments, setPayments])
 

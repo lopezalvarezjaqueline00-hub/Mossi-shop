@@ -5,7 +5,22 @@ import { generateId, STORAGE_KEYS } from '../utils/storage'
 import { ProductContext } from './ProductContextValue'
 
 const ensureProductList = (products) =>
-  Array.isArray(products) ? products.filter(Boolean) : []
+  Array.isArray(products)
+    ? products.filter(
+        (product) =>
+          product && typeof product === 'object' && !Array.isArray(product),
+      )
+    : []
+
+const getProductStock = (product) => {
+  const stock = Number(product.stock)
+
+  if (Number.isFinite(stock)) {
+    return Math.max(0, stock)
+  }
+
+  return product.status === 'Vendido' ? 0 : 1
+}
 
 const normalizeProduct = (product = {}, fallbackId) => {
   const safeProduct =
@@ -24,6 +39,7 @@ const normalizeProduct = (product = {}, fallbackId) => {
     status: PRODUCT_STATUSES.includes(safeProduct.status)
       ? safeProduct.status
       : 'Disponible',
+    stock: getProductStock(safeProduct),
     notes: safeProduct.notes || '',
     createdAt: safeProduct.createdAt || new Date().toISOString(),
     images: Array.isArray(safeProduct.images)
@@ -44,8 +60,8 @@ export function ProductProvider({ children }) {
       try {
         const nextProduct = normalizeProduct({
           ...(product && typeof product === 'object' ? product : {}),
-          id: generateId(),
-          createdAt: new Date().toISOString(),
+          id: product?.id || generateId(),
+          createdAt: product?.createdAt || new Date().toISOString(),
         })
 
         setProducts((current) => {
@@ -98,6 +114,17 @@ export function ProductProvider({ children }) {
       }
     }
 
+    const restoreProduct = (product) => {
+      const restoredProduct = normalizeProduct({
+        ...(product && typeof product === 'object' ? product : {}),
+        id: product?.id || generateId(),
+        createdAt: product?.createdAt || new Date().toISOString(),
+      })
+
+      setProducts((current) => [restoredProduct, ...ensureProductList(current)])
+      return restoredProduct
+    }
+
     const safeProducts = ensureProductList(products).map((product, index) =>
       normalizeProduct(product, `product-${index}`),
     )
@@ -108,6 +135,7 @@ export function ProductProvider({ children }) {
       updateProduct,
       deleteProduct,
       updateStatus,
+      restoreProduct,
     }
   }, [products, setProducts])
 

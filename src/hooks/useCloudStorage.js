@@ -83,6 +83,35 @@ const notifyStorageError = (cloudKey, message) => {
   )
 }
 
+const formatCloudError = (error) => {
+  if (!error) {
+    return 'Error desconocido'
+  }
+
+  if (typeof error === 'string') {
+    return error
+  }
+
+  return [
+    error.message,
+    error.code ? `codigo: ${error.code}` : '',
+    error.details ? `detalles: ${error.details}` : '',
+    error.hint ? `hint: ${error.hint}` : '',
+  ]
+    .filter(Boolean)
+    .join(' | ')
+}
+
+const logCloudError = (label, error) => {
+  console.error(label, {
+    message: error?.message,
+    code: error?.code,
+    details: error?.details,
+    hint: error?.hint,
+    error,
+  })
+}
+
 const getLocalValue = (key, fallbackValue) =>
   normalizeStoredValue(safeJsonParse(localStorage.getItem(key), fallbackValue), fallbackValue)
 
@@ -157,8 +186,8 @@ export function useCloudStorage(key, initialValue, cloudKey) {
         }
 
         if (error) {
-          console.warn(`Supabase sync disabled for ${cloudKey}:`, error.message)
-          notifyStorageError(cloudKey, error.message)
+          logCloudError(`Supabase sync failed for ${cloudKey}`, error)
+          notifyStorageError(cloudKey, formatCloudError(error))
           return
         }
 
@@ -192,11 +221,11 @@ export function useCloudStorage(key, initialValue, cloudKey) {
               .single()
 
             if (pendingWriteError) {
-              console.warn(
-                `Supabase pending write failed for ${cloudKey}:`,
-                pendingWriteError.message,
+              logCloudError(
+                `Supabase pending write failed for ${cloudKey}`,
+                pendingWriteError,
               )
-              notifyStorageError(cloudKey, pendingWriteError.message)
+              notifyStorageError(cloudKey, formatCloudError(pendingWriteError))
               return
             }
 
@@ -231,15 +260,12 @@ export function useCloudStorage(key, initialValue, cloudKey) {
           .single()
 
         if (upsertError) {
-          console.warn(
-            `Supabase sync disabled for ${cloudKey}:`,
-            upsertError.message,
-          )
-          notifyStorageError(cloudKey, upsertError.message)
+          logCloudError(`Supabase initial write failed for ${cloudKey}`, upsertError)
+          notifyStorageError(cloudKey, formatCloudError(upsertError))
         }
       } catch (error) {
-        console.error(`Supabase sync crashed for ${cloudKey}:`, error)
-        notifyStorageError(cloudKey, error.message || 'Error desconocido')
+        logCloudError(`Supabase sync crashed for ${cloudKey}`, error)
+        notifyStorageError(cloudKey, formatCloudError(error))
       }
     }
 
@@ -332,8 +358,8 @@ export function useCloudStorage(key, initialValue, cloudKey) {
           })
         },
         (error) => {
-          console.warn(`Cloud sync disabled for ${cloudKey}:`, error.message)
-          notifyStorageError(cloudKey, error.message)
+          logCloudError(`Cloud sync disabled for ${cloudKey}`, error)
+          notifyStorageError(cloudKey, formatCloudError(error))
         },
       )
     })
@@ -377,8 +403,8 @@ export function useCloudStorage(key, initialValue, cloudKey) {
             .single()
 
           if (error) {
-            console.warn(`Supabase write failed for ${cloudKey}:`, error.message)
-            notifyStorageError(cloudKey, error.message)
+            logCloudError(`Supabase write failed for ${cloudKey}`, error)
+            notifyStorageError(cloudKey, formatCloudError(error))
             return
           }
 
@@ -411,8 +437,8 @@ export function useCloudStorage(key, initialValue, cloudKey) {
         )
         lastRemoteValue.current = serializedValue
       } catch (error) {
-        console.error(`Cloud write crashed for ${cloudKey}:`, error)
-        notifyStorageError(cloudKey, error.message || 'Error desconocido')
+        logCloudError(`Cloud write crashed for ${cloudKey}`, error)
+        notifyStorageError(cloudKey, formatCloudError(error))
       }
     }, 350)
 

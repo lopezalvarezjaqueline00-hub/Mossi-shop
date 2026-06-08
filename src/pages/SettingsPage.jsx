@@ -1,8 +1,12 @@
 import { useMemo, useState } from 'react'
 import { FiDownload, FiMoon, FiRefreshCw, FiSave, FiSun } from 'react-icons/fi'
 import { defaultSettings } from '../data/defaultSettings'
+import { useClients } from '../hooks/useClients'
+import { useDeletedItems } from '../hooks/useDeletedItems'
+import { useMovements } from '../hooks/useMovements'
 import { usePayments } from '../hooks/usePayments'
 import { useProducts } from '../hooks/useProducts'
+import { useSales } from '../hooks/useSales'
 import { useSettings } from '../hooks/useSettings'
 import { useToast } from '../hooks/useToast'
 
@@ -17,6 +21,10 @@ export default function SettingsPage() {
   const { settings, updateSettings } = useSettings()
   const { products } = useProducts()
   const { payments } = usePayments()
+  const { clients } = useClients()
+  const { sales } = useSales()
+  const { movements } = useMovements()
+  const { deletedItems } = useDeletedItems()
   const { notify } = useToast()
   const [storeName, setStoreName] = useState(settings.storeName)
   const safeProducts = useMemo(
@@ -26,6 +34,19 @@ export default function SettingsPage() {
   const safePayments = useMemo(
     () => (Array.isArray(payments) ? payments : []),
     [payments],
+  )
+  const safeClients = useMemo(
+    () => (Array.isArray(clients) ? clients : []),
+    [clients],
+  )
+  const safeSales = useMemo(() => (Array.isArray(sales) ? sales : []), [sales])
+  const safeMovements = useMemo(
+    () => (Array.isArray(movements) ? movements : []),
+    [movements],
+  )
+  const safeDeletedItems = useMemo(
+    () => (Array.isArray(deletedItems) ? deletedItems : []),
+    [deletedItems],
   )
 
   const saveStoreName = () => {
@@ -42,6 +63,10 @@ export default function SettingsPage() {
       settings,
       products: safeProducts,
       payments: safePayments,
+      clients: safeClients,
+      sales: safeSales,
+      movements: safeMovements,
+      deletedItems: safeDeletedItems,
     }
     const blob = new Blob([JSON.stringify(payload, null, 2)], {
       type: 'application/json',

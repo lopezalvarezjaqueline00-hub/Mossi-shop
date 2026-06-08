@@ -6,7 +6,9 @@ import {
   FiLogOut,
   FiMenu,
   FiPlus,
+  FiRotateCcw,
   FiSettings,
+  FiUsers,
   FiX,
 } from 'react-icons/fi'
 import { useAuth } from '../hooks/useAuth'
@@ -16,7 +18,9 @@ const navItems = [
   { id: 'dashboard', label: 'Dashboard', icon: FiGrid },
   { id: 'products', label: 'Productos', icon: FiBox },
   { id: 'payments', label: 'Pagos', icon: FiCreditCard },
+  { id: 'clients', label: 'Clientes', icon: FiUsers },
   { id: 'analytics', label: 'Analytics', icon: FiBarChart2 },
+  { id: 'deleted', label: 'Eliminados', icon: FiRotateCcw },
   { id: 'settings', label: 'Configuracion', icon: FiSettings },
 ]
 

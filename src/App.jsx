@@ -4,12 +4,18 @@ import AppLayout from './layouts/AppLayout'
 import AnalyticsPage from './pages/AnalyticsPage'
 import DashboardPage from './pages/DashboardPage'
 import LoginPage from './pages/LoginPage'
+import ClientsPage from './pages/ClientsPage'
+import DeletedItemsPage from './pages/DeletedItemsPage'
 import PaymentsPage from './pages/PaymentsPage'
 import ProductsPage from './pages/ProductsPage'
 import SettingsPage from './pages/SettingsPage'
 import { AuthProvider } from './context/AuthContext'
+import { ClientProvider } from './context/ClientContext'
+import { DeletedItemsProvider } from './context/DeletedItemsContext'
+import { MovementProvider } from './context/MovementContext'
 import { PaymentProvider } from './context/PaymentContext'
 import { ProductProvider } from './context/ProductContext'
+import { SaleProvider } from './context/SaleContext'
 import { SettingsProvider } from './context/SettingsContext'
 import { ToastProvider } from './context/ToastContext'
 import ToastContainer from './components/ToastContainer'
@@ -53,6 +59,14 @@ function AuthenticatedApp() {
 
     if (activePage === 'settings') {
       return <SettingsPage />
+    }
+
+    if (activePage === 'clients') {
+      return <ClientsPage />
+    }
+
+    if (activePage === 'deleted') {
+      return <DeletedItemsPage />
     }
 
     if (activePage === 'payments') {
@@ -106,10 +120,18 @@ function App() {
       <AuthProvider>
         <ToastProvider>
           <ProductProvider>
-            <PaymentProvider>
-              <AuthenticatedApp />
-              <ToastContainer />
-            </PaymentProvider>
+            <ClientProvider>
+              <SaleProvider>
+                <PaymentProvider>
+                  <MovementProvider>
+                    <DeletedItemsProvider>
+                      <AuthenticatedApp />
+                      <ToastContainer />
+                    </DeletedItemsProvider>
+                  </MovementProvider>
+                </PaymentProvider>
+              </SaleProvider>
+            </ClientProvider>
           </ProductProvider>
         </ToastProvider>
       </AuthProvider>

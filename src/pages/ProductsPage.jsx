@@ -8,6 +8,9 @@ import ProductModal from '../components/ProductModal'
 import ProductQuickView from '../components/ProductQuickView'
 import SearchFilters from '../components/SearchFilters'
 import { ProductCardSkeleton } from '../components/Skeletons'
+import { useAuth } from '../hooks/useAuth'
+import { useDeletedItems } from '../hooks/useDeletedItems'
+import { useMovements } from '../hooks/useMovements'
 import { useProducts } from '../hooks/useProducts'
 import { useToast } from '../hooks/useToast'
 import { normalizeText } from '../utils/formatters'
@@ -23,6 +26,9 @@ export default function ProductsPage({
   openCreateOnMount = false,
   onCreateRequestHandled,
 }) {
+  const { user } = useAuth()
+  const { addDeletedItem } = useDeletedItems()
+  const { addMovement } = useMovements()
   const {
     products,
     addProduct,
@@ -114,7 +120,7 @@ export default function ProductsPage({
       console.error('Product save handler failed:', error)
       notify({
         title: 'Error al guardar producto',
-        message: 'No se pudo guardar. Revisa Supabase o intenta de nuevo.',
+        message: error?.message || 'No se pudo guardar el producto.',
         type: 'error',
       })
     }
@@ -125,10 +131,27 @@ export default function ProductsPage({
       return
     }
 
+    const deletedBy = user?.name || user?.email || 'Administradora'
+    addDeletedItem({
+      type: 'producto',
+      originalId: deleteTarget.id,
+      title: deleteTarget.name,
+      description: deleteTarget.category,
+      amount: deleteTarget.price,
+      data: deleteTarget,
+      deletedBy,
+    })
     deleteProduct(deleteTarget.id)
+    addMovement({
+      type: 'eliminado',
+      title: `${deleteTarget.name} eliminado`,
+      description: 'Producto movido a Eliminados recientemente',
+      amount: deleteTarget.price,
+      createdBy: deletedBy,
+    })
     notify({
-      title: 'Producto eliminado',
-      message: `${deleteTarget.name} salio del inventario.`,
+      title: 'Producto movido',
+      message: `${deleteTarget.name} se puede restaurar desde Eliminados recientemente.`,
       type: 'info',
     })
     setDeleteTarget(null)
@@ -238,7 +261,7 @@ export default function ProductsPage({
       <ConfirmDialog
         isOpen={Boolean(deleteTarget)}
         title="Eliminar producto"
-        description={`Esta accion eliminara "${deleteTarget?.name}" del inventario local.`}
+        description={`"${deleteTarget?.name}" se movera a Eliminados recientemente.`}
         onCancel={() => setDeleteTarget(null)}
         onConfirm={confirmDelete}
       />

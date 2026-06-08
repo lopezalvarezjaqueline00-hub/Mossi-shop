@@ -2,6 +2,10 @@ export const STORAGE_KEYS = {
   auth: 'mossi-shop:auth',
   products: 'mossi-shop:products',
   payments: 'mossi-shop:payments',
+  clients: 'mossi-shop:clients',
+  sales: 'mossi-shop:sales',
+  movements: 'mossi-shop:movements',
+  deletedItems: 'mossi-shop:deleted-items',
   settings: 'mossi-shop:settings',
 }
 
