@@ -4,6 +4,16 @@ import { FiCheck, FiClock, FiEdit2, FiShoppingBag, FiX } from 'react-icons/fi'
 import StatusBadge from './StatusBadge'
 import { formatCurrency, formatDate } from '../utils/formatters'
 
+const getProductStock = (product) => {
+  const stock = Number(product.stock)
+
+  if (Number.isFinite(stock)) {
+    return Math.max(0, stock)
+  }
+
+  return ['Vendido', 'Agotado'].includes(product.status) ? 0 : 1
+}
+
 export default function ProductQuickView({
   product,
   isOpen,
@@ -22,6 +32,7 @@ export default function ProductQuickView({
       ? product.images
       : []
   const mainImage = images[activeImage] || images[0]
+  const stock = getProductStock(product)
 
   return (
     <AnimatePresence>
@@ -103,7 +114,13 @@ export default function ProductQuickView({
                 </span>
               </div>
 
-              <div className="mt-6 grid gap-3 sm:grid-cols-3">
+              <div className="mt-6 grid gap-3 sm:grid-cols-4">
+                <div className="rounded-lg border border-[color:var(--line)] p-3">
+                  <p className="text-xs text-[color:var(--muted)]">Cantidad</p>
+                  <p className="mt-1 font-semibold text-[color:var(--ink)]">
+                    {stock}
+                  </p>
+                </div>
                 <div className="rounded-lg border border-[color:var(--line)] p-3">
                   <p className="text-xs text-[color:var(--muted)]">Talla</p>
                   <p className="mt-1 font-semibold text-[color:var(--ink)]">
@@ -167,6 +184,14 @@ export default function ProductQuickView({
                 >
                   <FiCheck className="h-4 w-4" />
                   Disponible
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onStatusChange(product.id, 'Agotado')}
+                  className="focus-ring inline-flex items-center justify-center gap-2 rounded-md border border-[color:var(--line)] px-4 py-3 text-sm font-semibold text-[color:var(--ink)] transition hover:bg-[color:var(--surface-muted)]"
+                >
+                  <FiX className="h-4 w-4" />
+                  Agotado
                 </button>
                 <button
                   type="button"

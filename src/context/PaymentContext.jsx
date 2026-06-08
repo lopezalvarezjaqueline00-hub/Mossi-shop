@@ -28,9 +28,16 @@ const normalizePayment = (payment = {}, fallbackId) => {
         .map((item, index) => ({
           id: item.id || `${id}-item-${index}`,
           productId: item.productId || '',
+          inventoryProductId: item.inventoryProductId || '',
+          source: item.source || (item.productId ? 'Inventario' : 'Manual'),
           name: item.name || item.productName || 'Articulo',
+          description: item.description || '',
           quantity: Number(item.quantity) || 1,
           price: Number(item.price) || 0,
+          subtotal:
+            Number(item.subtotal) ||
+            Number(item.price || 0) * Number(item.quantity || 1),
+          saveToInventory: Boolean(item.saveToInventory),
         }))
     : []
 

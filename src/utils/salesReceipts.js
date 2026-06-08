@@ -126,6 +126,7 @@ const addTotals = (doc, y, rows) => {
 export const downloadSaleTicket = (sale) => {
   const doc = new jsPDF({ unit: 'pt', format: 'a4' })
   let y = 160
+  const saleItems = Array.isArray(sale.items) ? sale.items : []
 
   addHeader(
     doc,
@@ -149,9 +150,17 @@ export const downloadSaleTicket = (sale) => {
   doc.text('SUBTOTAL', PAGE.width - PAGE.margin - 14, y, { align: 'right' })
   y += 30
 
-  sale.items.forEach((item, index) => {
+  saleItems.forEach((item, index) => {
     const lines = doc.splitTextToSize(`${index + 1}. ${item.name}`, 250)
-    const rowHeight = Math.max(44, lines.length * 13 + 20)
+    const source = item.source || (item.productId ? 'Inventario' : 'Manual')
+    const itemDescription = item.description
+      ? `${source} · ${item.description}`
+      : source
+    const detailLines = doc.splitTextToSize(itemDescription, 250)
+    const rowHeight = Math.max(
+      54,
+      lines.length * 13 + detailLines.length * 11 + 24,
+    )
     y = ensureSpace(doc, y, rowHeight + 18)
 
     if (index % 2 === 0) {
@@ -163,6 +172,12 @@ export const downloadSaleTicket = (sale) => {
     doc.setFontSize(10)
     setText(doc, COLORS.ink)
     doc.text(lines, PAGE.margin + 14, y)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(8)
+    setText(doc, COLORS.muted)
+    doc.text(detailLines, PAGE.margin + 14, y + lines.length * 13 + 8)
+    doc.setFontSize(10)
+    setText(doc, COLORS.ink)
     doc.setFont('helvetica', 'normal')
     doc.text(String(item.quantity), 322, y)
     doc.text(formatCurrency(item.price), 380, y)

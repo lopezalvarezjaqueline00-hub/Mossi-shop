@@ -1,4 +1,4 @@
-export const PRODUCT_STATUSES = ['Disponible', 'Vendido', 'Apartado']
+export const PRODUCT_STATUSES = ['Disponible', 'Vendido', 'Apartado', 'Agotado']
 
 export const PRODUCT_CATEGORIES = [
   'Bolsas',

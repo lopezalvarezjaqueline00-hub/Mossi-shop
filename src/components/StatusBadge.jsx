@@ -5,6 +5,8 @@ const STATUS_STYLES = {
     'border-[color:var(--danger)]/30 bg-[color:var(--danger)]/10 text-[color:var(--danger)]',
   Apartado:
     'border-[color:var(--warning)]/30 bg-[color:var(--warning)]/10 text-[color:var(--warning)]',
+  Agotado:
+    'border-[color:var(--muted)]/30 bg-[color:var(--surface-muted)] text-[color:var(--muted)]',
 }
 
 export default function StatusBadge({ status }) {

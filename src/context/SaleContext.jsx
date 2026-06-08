@@ -17,14 +17,20 @@ const normalizeSaleItems = (sale) =>
         .map((item, index) => {
           const quantity = Number(item.quantity) || 1
           const price = Number(item.price) || 0
+          const source =
+            item.source || (item.productId ? 'Inventario' : 'Manual')
 
           return {
             id: item.id || `${sale.id || 'sale'}-item-${index}`,
             productId: item.productId || '',
+            inventoryProductId: item.inventoryProductId || '',
+            source,
             name: item.name || 'Articulo',
+            description: item.description || '',
             quantity,
             price,
             subtotal: Number(item.subtotal) || quantity * price,
+            saveToInventory: Boolean(item.saveToInventory),
           }
         })
     : []

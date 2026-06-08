@@ -160,7 +160,9 @@ export default function ProductsPage({
   const handleStatusChange = (id, status) => {
     updateStatus(id, status)
     setQuickViewProduct((current) =>
-      current?.id === id ? { ...current, status } : current,
+      current?.id === id
+        ? { ...current, status, stock: status === 'Agotado' ? 0 : current.stock }
+        : current,
     )
     notify({
       title: 'Estado actualizado',

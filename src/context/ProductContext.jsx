@@ -19,7 +19,7 @@ const getProductStock = (product) => {
     return Math.max(0, stock)
   }
 
-  return product.status === 'Vendido' ? 0 : 1
+  return ['Vendido', 'Agotado'].includes(product.status) ? 0 : 1
 }
 
 const normalizeProduct = (product = {}, fallbackId) => {
@@ -27,6 +27,15 @@ const normalizeProduct = (product = {}, fallbackId) => {
     product && typeof product === 'object' && !Array.isArray(product)
       ? product
       : {}
+
+  const initialStatus = PRODUCT_STATUSES.includes(safeProduct.status)
+    ? safeProduct.status
+    : 'Disponible'
+  const stock = initialStatus === 'Agotado' ? 0 : getProductStock(safeProduct)
+  const status =
+    stock <= 0 && initialStatus === 'Disponible'
+      ? 'Agotado'
+      : initialStatus
 
   return {
     id: safeProduct.id || fallbackId || generateId(),
@@ -36,10 +45,8 @@ const normalizeProduct = (product = {}, fallbackId) => {
     price: Number(safeProduct.price) || 0,
     size: safeProduct.size || '',
     color: safeProduct.color || '',
-    status: PRODUCT_STATUSES.includes(safeProduct.status)
-      ? safeProduct.status
-      : 'Disponible',
-    stock: getProductStock(safeProduct),
+    status,
+    stock,
     notes: safeProduct.notes || '',
     createdAt: safeProduct.createdAt || new Date().toISOString(),
     images: Array.isArray(safeProduct.images)
@@ -105,7 +112,13 @@ export function ProductProvider({ children }) {
       try {
         setProducts((current) =>
           ensureProductList(current).map((product) =>
-            product.id === id ? { ...product, status } : product,
+            product.id === id
+              ? normalizeProduct({
+                  ...product,
+                  status,
+                  stock: status === 'Agotado' ? 0 : product.stock,
+                })
+              : product,
           ),
         )
       } catch (error) {

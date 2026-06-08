@@ -3,8 +3,19 @@ import { FiEdit2, FiEye, FiTrash2 } from 'react-icons/fi'
 import StatusBadge from './StatusBadge'
 import { formatCurrency } from '../utils/formatters'
 
+const getProductStock = (product) => {
+  const stock = Number(product.stock)
+
+  if (Number.isFinite(stock)) {
+    return Math.max(0, stock)
+  }
+
+  return ['Vendido', 'Agotado'].includes(product.status) ? 0 : 1
+}
+
 export default function ProductCard({ product, onEdit, onDelete, onQuickView }) {
   const image = product.images?.[0]
+  const stock = getProductStock(product)
 
   return (
     <motion.article
@@ -43,6 +54,9 @@ export default function ProductCard({ product, onEdit, onDelete, onQuickView }) 
             <h3 className="mt-1 line-clamp-2 text-base font-semibold text-[color:var(--ink)]">
               {product.name}
             </h3>
+            <p className="mt-2 text-xs text-[color:var(--muted)]">
+              Stock: {stock}
+            </p>
           </div>
           <p className="shrink-0 text-sm font-semibold text-[color:var(--ink)]">
             {formatCurrency(product.price)}

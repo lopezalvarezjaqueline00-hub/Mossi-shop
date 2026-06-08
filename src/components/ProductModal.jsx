@@ -8,6 +8,7 @@ const blankProduct = {
   category: 'Ropa',
   description: '',
   price: '',
+  stock: 1,
   size: '',
   color: '',
   status: 'Disponible',
@@ -22,6 +23,11 @@ const getInitialForm = (product) =>
   product
     ? { ...blankProduct, ...product, images: getProductImages(product) }
     : { ...blankProduct, images: [] }
+
+const normalizeStock = (value) => {
+  const stock = Number.parseInt(value, 10)
+  return Number.isFinite(stock) ? Math.max(0, stock) : 0
+}
 
 const fileToDataUrl = (file) =>
   new Promise((resolve, reject) => {
@@ -46,6 +52,10 @@ export default function ProductModal({ isOpen, product, onClose, onSave }) {
 
   const updateField = (field, value) => {
     setForm((current) => ({ ...current, [field]: value }))
+  }
+
+  const updateStock = (value) => {
+    updateField('stock', value === '' ? '' : normalizeStock(value))
   }
 
   const addFiles = async (files) => {
@@ -88,6 +98,7 @@ export default function ProductModal({ isOpen, product, onClose, onSave }) {
         ...form,
         name: form.name.trim(),
         price: Number(form.price) || 0,
+        stock: normalizeStock(form.stock),
         images: safeImages,
       })
     } catch (error) {
@@ -181,7 +192,7 @@ export default function ProductModal({ isOpen, product, onClose, onSave }) {
                   </label>
                 </div>
 
-                <div className="grid gap-4 sm:grid-cols-3">
+                <div className="grid gap-4 sm:grid-cols-4">
                   <label className="block">
                     <span className="text-sm font-medium text-[color:var(--ink)]">
                       Precio
@@ -195,6 +206,21 @@ export default function ProductModal({ isOpen, product, onClose, onSave }) {
                       }
                       className="focus-ring mt-2 w-full rounded-md border border-[color:var(--line)] bg-[color:var(--surface)] px-3 py-3 text-sm text-[color:var(--ink)] outline-none"
                       placeholder="0"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-sm font-medium text-[color:var(--ink)]">
+                      Cantidad
+                    </span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      inputMode="numeric"
+                      value={form.stock}
+                      onChange={(event) => updateStock(event.target.value)}
+                      className="focus-ring mt-2 w-full rounded-md border border-[color:var(--line)] bg-[color:var(--surface)] px-3 py-3 text-sm text-[color:var(--ink)] outline-none"
+                      placeholder="1"
                     />
                   </label>
                   <label className="block">

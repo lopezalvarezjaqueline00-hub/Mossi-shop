@@ -126,7 +126,7 @@ export default function PaymentsPage({
   const { addDeletedItem } = useDeletedItems()
   const { movements, addMovement, deleteMovement } = useMovements()
   const { payments, addPayment, deletePayment } = usePayments()
-  const { products, updateProduct } = useProducts()
+  const { products, addProduct, updateProduct } = useProducts()
   const { sales, addSale, updateSale, deleteSale } = useSales()
   const { notify } = useToast()
   const [filters, setFilters] = useState(initialFilters)
@@ -240,79 +240,152 @@ export default function PaymentsPage({
   }
 
   const handleSaveSale = (payload) => {
-    let client = safeClients.find((item) => item.id === payload.clientId)
+    try {
+      const saleItems = Array.isArray(payload.items) ? payload.items : []
 
-    if (!client) {
-      client = addClient({
-        name: payload.clientName,
-        phone: payload.clientPhone,
-      })
-    }
-
-    const sale = addSale({
-      clientId: client.id,
-      clientName: client.name,
-      saleDate: payload.saleDate,
-      items: payload.items,
-      total: payload.total,
-      amountPaid: payload.amountPaid,
-      balance: payload.balance,
-      status: payload.status,
-      notes: payload.notes,
-    })
-
-    payload.items.forEach((item) => {
-      const product = safeProducts.find((entry) => entry.id === item.productId)
-
-      if (!product) {
-        return
+      if (!saleItems.length) {
+        throw new Error('Agrega al menos un producto a la venta.')
       }
 
-      const nextStock = Math.max(getProductStock(product) - item.quantity, 0)
-      updateProduct(product.id, {
-        stock: nextStock,
-        status: nextStock <= 0 ? 'Vendido' : product.status,
-      })
-    })
+      saleItems
+        .filter((item) => item.source !== 'Manual')
+        .forEach((item) => {
+          const product = safeProducts.find(
+            (entry) => entry.id === item.productId,
+          )
 
-    if (payload.amountPaid > 0) {
-      addPayment({
+          if (!product) {
+            throw new Error(`No encontramos ${item.name} en inventario.`)
+          }
+
+          if (Number(item.quantity || 0) > getProductStock(product)) {
+            throw new Error(
+              `Stock insuficiente para ${item.name}. Disponible: ${getProductStock(product)}.`,
+            )
+          }
+        })
+
+      let client = safeClients.find((item) => item.id === payload.clientId)
+
+      if (!client) {
+        client = addClient({
+          name: payload.clientName,
+          phone: payload.clientPhone,
+        })
+      }
+
+      const sale = addSale({
         clientId: client.id,
-        saleId: sale.id,
         clientName: client.name,
-        productName: `Ticket ${sale.ticketNumber}`,
-        items: sale.items,
-        purchaseTotal: sale.total,
-        amount: payload.amountPaid,
-        balanceBefore: sale.total,
-        balanceAfter: sale.balance,
-        method: payload.method,
-        type: sale.balance <= 0 ? 'Pago Completo' : 'Anticipo',
-        paymentDate: payload.saleDate,
-        kind: 'sale_payment',
+        clientPhone: payload.clientPhone,
+        saleDate: payload.saleDate,
+        items: saleItems,
+        total: payload.total,
+        amountPaid: payload.amountPaid,
+        balance: payload.balance,
+        status: payload.status,
         notes: payload.notes,
       })
-    }
 
-    addMovement({
-      type: 'venta',
-      title: `Venta ${client.name}`,
-      description: `${sale.items.length} articulos vendidos`,
-      amount: sale.total,
-      createdBy: getAdminName(user),
-    })
+      saleItems
+        .filter((item) => item.source !== 'Manual')
+        .forEach((item) => {
+          const product = safeProducts.find((entry) => entry.id === item.productId)
 
-    try {
-      downloadSaleTicket(sale)
+          if (!product) {
+            return
+          }
+
+          const nextStock = Math.max(getProductStock(product) - item.quantity, 0)
+          updateProduct(product.id, {
+            stock: nextStock,
+            status: nextStock <= 0 ? 'Agotado' : product.status,
+          })
+        })
+
+      const nextSaleItems = saleItems.map((item) => {
+        if (item.source !== 'Manual' || !item.saveToInventory) {
+          return item
+        }
+
+        const createdProduct = addProduct({
+          name: item.name,
+          category: 'Ropa',
+          description: item.description,
+          price: item.price,
+          stock: item.quantity,
+          status: 'Disponible',
+          notes: `Creado desde ticket ${sale.ticketNumber}. Cantidad vendida: ${item.quantity}.`,
+          images: [],
+        })
+        updateProduct(createdProduct.id, {
+          stock: 0,
+          status: 'Agotado',
+        })
+
+        return {
+          ...item,
+          productId: createdProduct.id,
+          inventoryProductId: createdProduct.id,
+        }
+      })
+
+      const finalSale =
+        nextSaleItems.some((item) => item.inventoryProductId)
+          ? updateSale(sale.id, { items: nextSaleItems }) || {
+              ...sale,
+              items: nextSaleItems,
+            }
+          : sale
+
+      if (payload.amountPaid > 0) {
+        addPayment({
+          clientId: client.id,
+          saleId: finalSale.id,
+          clientName: client.name,
+          productName: `Ticket ${finalSale.ticketNumber}`,
+          items: finalSale.items,
+          purchaseTotal: finalSale.total,
+          amount: payload.amountPaid,
+          balanceBefore: finalSale.total,
+          balanceAfter: finalSale.balance,
+          method: 'No especificado',
+          type: finalSale.balance <= 0 ? 'Pago Completo' : 'Anticipo',
+          paymentDate: payload.saleDate,
+          kind: 'sale_payment',
+          notes: payload.notes,
+        })
+      }
+
+      addMovement({
+        type: 'venta',
+        title: `Venta ${client.name}`,
+        description: `${finalSale.items.length} articulos vendidos`,
+        amount: finalSale.total,
+        createdBy: getAdminName(user),
+      })
+
+      try {
+        downloadSaleTicket(finalSale)
+      } catch (error) {
+        console.error('Sale ticket PDF failed:', error)
+      }
+
+      notify({
+        title: 'Venta guardada',
+        message: `Ticket de ${client.name} generado.`,
+      })
+      setSaleModalOpen(false)
+      return true
     } catch (error) {
-      console.error('Sale ticket PDF failed:', error)
+      console.error('Sale save failed:', error)
+      notify({
+        title: 'No se pudo guardar la venta',
+        message: error?.message || 'Revisa la conexion con Supabase.',
+        type: 'error',
+      })
+      return false
     }
-
-    notify({
-      title: 'Venta guardada',
-      message: `Ticket de ${client.name} generado.`,
-    })
-    setSaleModalOpen(false)
   }
 
   const handleSaveAbono = (payload) => {
@@ -755,6 +828,31 @@ function Amount({ label, value }) {
   )
 }
 
+const emptyManualDraft = {
+  name: '',
+  price: '',
+  quantity: 1,
+  description: '',
+  saveToInventory: false,
+}
+
+const safeList = (value) => (Array.isArray(value) ? value : [])
+
+const getPositiveInteger = (value, fallback = 1) => {
+  const number = Number.parseInt(value, 10)
+  return Number.isFinite(number) ? Math.max(1, number) : fallback
+}
+
+const getPositiveMoney = (value) => {
+  const number = Number(value)
+  return Number.isFinite(number) ? Math.max(0, number) : 0
+}
+
+const getCartItems = (items) =>
+  safeList(items).filter(
+    (item) => item && typeof item === 'object' && !Array.isArray(item),
+  )
+
 function SaleModal({ isOpen, clients, products, onClose, onSave }) {
   const [form, setForm] = useState({
     clientId: '',
@@ -763,17 +861,21 @@ function SaleModal({ isOpen, clients, products, onClose, onSave }) {
     saleDate: getToday(),
     status: 'Pendiente',
     amountPaid: '',
-    method: 'Transferencia',
     notes: '',
   })
   const [draft, setDraft] = useState({ productId: '', quantity: 1 })
+  const [manualDraft, setManualDraft] = useState(emptyManualDraft)
   const [items, setItems] = useState([])
   const [error, setError] = useState('')
+  const safeClients = useMemo(() => safeList(clients), [clients])
+  const safeCartItems = useMemo(() => getCartItems(items), [items])
 
   const availableProducts = useMemo(
     () =>
-      (Array.isArray(products) ? products : []).filter(
-        (product) => product.status !== 'Vendido' && getProductStock(product) > 0,
+      safeList(products).filter(
+        (product) =>
+          !['Vendido', 'Agotado'].includes(product.status) &&
+          getProductStock(product) > 0,
       ),
     [products],
   )
@@ -781,16 +883,35 @@ function SaleModal({ isOpen, clients, products, onClose, onSave }) {
   const selectedProduct = availableProducts.find(
     (product) => product.id === draft.productId,
   )
-  const total = items.reduce((sum, item) => sum + item.subtotal, 0)
-  const amountPaid = Number(form.amountPaid || 0)
+  const selectedStock = selectedProduct ? getProductStock(selectedProduct) : 0
+  const total = safeCartItems.reduce(
+    (sum, item) => sum + Number(item.subtotal || 0),
+    0,
+  )
+  const amountPaid = getPositiveMoney(form.amountPaid)
   const balance = Math.max(total - amountPaid, 0)
+  const statusHint = (() => {
+    if (form.status === 'Pagado' && total > 0 && amountPaid !== total) {
+      return 'Para una venta pagada, el monto pagado deberia coincidir con el total.'
+    }
+
+    if (amountPaid === 0 && form.status !== 'Pendiente') {
+      return 'Con monto pagado en cero, lo mas claro es dejar el estado como Pendiente.'
+    }
+
+    if (amountPaid > 0 && amountPaid < total && form.status === 'Pagado') {
+      return 'Aun queda saldo pendiente; puedes marcarla como Pendiente o Apartado.'
+    }
+
+    return ''
+  })()
 
   const updateForm = (field, value) => {
     setForm((current) => ({ ...current, [field]: value }))
   }
 
   const selectClient = (clientId) => {
-    const client = clients.find((item) => item.id === clientId)
+    const client = safeClients.find((item) => item.id === clientId)
     setForm((current) => ({
       ...current,
       clientId,
@@ -799,36 +920,42 @@ function SaleModal({ isOpen, clients, products, onClose, onSave }) {
     }))
   }
 
-  const addItem = () => {
+  const updateManualDraft = (field, value) => {
+    setManualDraft((current) => ({ ...current, [field]: value }))
+  }
+
+  const addInventoryItem = () => {
     if (!selectedProduct) {
       setError('Selecciona un producto del inventario.')
       return
     }
 
-    const quantity = Math.max(1, Number(draft.quantity) || 1)
-    const stock = getProductStock(selectedProduct)
-    const currentQuantity = items
+    const quantity = getPositiveInteger(draft.quantity)
+    const currentQuantity = safeCartItems
       .filter((item) => item.productId === selectedProduct.id)
       .reduce((sum, item) => sum + Number(item.quantity || 0), 0)
 
-    if (quantity + currentQuantity > stock) {
-      setError(`Solo hay ${stock} disponibles de este producto.`)
+    if (quantity + currentQuantity > selectedStock) {
+      setError(`Solo hay ${selectedStock} disponibles de este producto.`)
       return
     }
 
     const price = Number(selectedProduct.price || 0)
     setItems((current) => {
-      const existingItem = current.find(
+      const safeCurrent = getCartItems(current)
+      const existingItem = safeCurrent.find(
         (item) => item.productId === selectedProduct.id,
       )
 
       if (!existingItem) {
         return [
-          ...current,
+          ...safeCurrent,
           {
             id: `${selectedProduct.id}-${Date.now()}`,
             productId: selectedProduct.id,
+            source: 'Inventario',
             name: selectedProduct.name,
+            description: selectedProduct.description || '',
             quantity,
             price,
             subtotal: quantity * price,
@@ -836,7 +963,7 @@ function SaleModal({ isOpen, clients, products, onClose, onSave }) {
         ]
       }
 
-      return current.map((item) => {
+      return safeCurrent.map((item) => {
         if (item.productId !== selectedProduct.id) {
           return item
         }
@@ -854,6 +981,40 @@ function SaleModal({ isOpen, clients, products, onClose, onSave }) {
     setError('')
   }
 
+  const addManualItem = () => {
+    const name = manualDraft.name.trim()
+    const quantity = getPositiveInteger(manualDraft.quantity)
+    const price = getPositiveMoney(manualDraft.price)
+
+    if (!name) {
+      setError('Escribe el nombre del producto manual.')
+      return
+    }
+
+    setItems((current) => [
+      ...getCartItems(current),
+      {
+        id: `manual-${Date.now()}`,
+        productId: '',
+        source: 'Manual',
+        name,
+        description: manualDraft.description.trim(),
+        quantity,
+        price,
+        subtotal: quantity * price,
+        saveToInventory: Boolean(manualDraft.saveToInventory),
+      },
+    ])
+    setManualDraft(emptyManualDraft)
+    setError('')
+  }
+
+  const removeItem = (itemId) => {
+    setItems((current) =>
+      getCartItems(current).filter((item) => item.id !== itemId),
+    )
+  }
+
   const handleSubmit = (event) => {
     event.preventDefault()
     setError('')
@@ -863,7 +1024,7 @@ function SaleModal({ isOpen, clients, products, onClose, onSave }) {
       return
     }
 
-    if (!items.length) {
+    if (!safeCartItems.length) {
       setError('Agrega al menos un producto a la venta.')
       return
     }
@@ -873,15 +1034,27 @@ function SaleModal({ isOpen, clients, products, onClose, onSave }) {
       return
     }
 
-    onSave({
-      ...form,
-      clientName: form.clientName.trim(),
-      items,
-      total,
-      amountPaid,
-      balance,
-      status: balance <= 0 ? 'Pagado' : form.status,
-    })
+    try {
+      const saved = onSave({
+        ...form,
+        clientName: form.clientName.trim(),
+        items: safeCartItems,
+        total,
+        amountPaid,
+        balance,
+        status: balance <= 0 ? 'Pagado' : form.status,
+      })
+
+      if (saved === false) {
+        setError('No se pudo guardar la venta. Revisa el mensaje de error e intenta de nuevo.')
+        return
+      }
+    } catch (saveError) {
+      console.error('Sale modal save failed:', saveError)
+      setError(saveError?.message || 'No se pudo guardar la venta.')
+      return
+    }
+
     setForm({
       clientId: '',
       clientName: '',
@@ -889,9 +1062,9 @@ function SaleModal({ isOpen, clients, products, onClose, onSave }) {
       saleDate: getToday(),
       status: 'Pendiente',
       amountPaid: '',
-      method: 'Transferencia',
       notes: '',
     })
+    setManualDraft(emptyManualDraft)
     setItems([])
   }
 
@@ -900,153 +1073,250 @@ function SaleModal({ isOpen, clients, products, onClose, onSave }) {
   }
 
   return (
-    <ModalShell title="Nueva venta" onClose={onClose} onSubmit={handleSubmit}>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <label className="block">
-          <span className="text-sm font-medium text-[color:var(--ink)]">
-            Clienta existente
-          </span>
-          <select
-            value={form.clientId}
-            onChange={(event) => selectClient(event.target.value)}
-            className="focus-ring mt-2 w-full rounded-md border border-[color:var(--line)] bg-[color:var(--surface)] px-3 py-3 text-sm text-[color:var(--ink)] outline-none"
-          >
-            <option value="">Crear nueva</option>
-            {clients.map((client) => (
-              <option key={client.id} value={client.id}>
-                {client.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <TextInput
-          label="Nombre de clienta"
-          value={form.clientName}
-          onChange={(value) => updateForm('clientName', value)}
-          required
-        />
-        <TextInput
-          label="Telefono opcional"
-          value={form.clientPhone}
-          onChange={(value) => updateForm('clientPhone', value)}
-        />
-        <TextInput
-          label="Fecha"
-          type="date"
-          value={form.saleDate}
-          onChange={(value) => updateForm('saleDate', value)}
-        />
-      </div>
-
-      <div className="rounded-lg border border-[color:var(--line)] bg-[color:var(--surface)] p-4">
-        <div className="grid gap-3 lg:grid-cols-[1fr_0.35fr_auto]">
+    <ModalShell
+      title="Nueva venta / Generar ticket"
+      onClose={onClose}
+      onSubmit={handleSubmit}
+      submitLabel="Guardar venta / generar PDF"
+    >
+      <TicketSection eyebrow="Paso 1" title="Datos de la clienta">
+        <div className="grid gap-4 sm:grid-cols-2">
           <label className="block">
-            <span className="text-xs font-medium text-[color:var(--muted)]">
-              Producto
+            <span className="text-sm font-medium text-[color:var(--ink)]">
+              Clienta existente
             </span>
             <select
-              value={draft.productId}
-              onChange={(event) =>
-                setDraft((current) => ({ ...current, productId: event.target.value }))
-              }
-              className="focus-ring mt-1 w-full rounded-md border border-[color:var(--line)] bg-[color:var(--canvas)] px-3 py-2.5 text-sm text-[color:var(--ink)] outline-none"
+              value={form.clientId}
+              onChange={(event) => selectClient(event.target.value)}
+              className="focus-ring mt-2 w-full rounded-md border border-[color:var(--line)] bg-[color:var(--surface)] px-3 py-3 text-sm text-[color:var(--ink)] outline-none"
             >
-              <option value="">Seleccionar producto</option>
-              {availableProducts.map((product) => (
-                <option key={product.id} value={product.id}>
-                  {product.name} · {formatCurrency(product.price)} · Stock{' '}
-                  {getProductStock(product)}
+              <option value="">Crear nueva</option>
+              {safeClients.map((client) => (
+                <option key={client.id} value={client.id}>
+                  {client.name}
                 </option>
               ))}
             </select>
           </label>
           <TextInput
-            label="Cantidad"
-            type="number"
-            value={draft.quantity}
-            onChange={(value) =>
-              setDraft((current) => ({ ...current, quantity: value }))
-            }
+            label="Nombre de clienta"
+            value={form.clientName}
+            onChange={(value) => updateForm('clientName', value)}
+            required
           />
-          <button
-            type="button"
-            onClick={addItem}
-            className="focus-ring mt-5 inline-flex items-center justify-center gap-2 rounded-md bg-[color:var(--ink)] px-4 py-2.5 text-sm font-semibold text-[color:var(--surface)]"
-          >
-            <FiPlus className="h-4 w-4" />
-            Agregar
-          </button>
+          <TextInput
+            label="Telefono opcional"
+            value={form.clientPhone}
+            onChange={(value) => updateForm('clientPhone', value)}
+          />
+          <TextInput
+            label="Fecha"
+            type="date"
+            value={form.saleDate}
+            onChange={(value) => updateForm('saleDate', value)}
+          />
         </div>
+      </TicketSection>
 
-        {items.length ? (
-          <div className="mt-4 space-y-2">
-            {items.map((item) => (
+      <TicketSection eyebrow="Paso 2" title="Agregar productos">
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div className="rounded-lg border border-[color:var(--line)] bg-[color:var(--canvas)] p-4">
+            <p className="text-sm font-semibold text-[color:var(--ink)]">
+              Desde inventario
+            </p>
+            <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_0.35fr]">
+              <label className="block">
+                <span className="text-xs font-medium text-[color:var(--muted)]">
+                  Producto
+                </span>
+                <select
+                  value={draft.productId}
+                  onChange={(event) =>
+                    setDraft((current) => ({
+                      ...current,
+                      productId: event.target.value,
+                    }))
+                  }
+                  className="focus-ring mt-1 w-full rounded-md border border-[color:var(--line)] bg-[color:var(--surface)] px-3 py-2.5 text-sm text-[color:var(--ink)] outline-none"
+                >
+                  <option value="">Seleccionar producto</option>
+                  {availableProducts.map((product) => (
+                    <option key={product.id} value={product.id}>
+                      {product.name} · {formatCurrency(product.price)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <TextInput
+                label="Cantidad"
+                type="number"
+                value={draft.quantity}
+                onChange={(value) =>
+                  setDraft((current) => ({ ...current, quantity: value }))
+                }
+              />
+            </div>
+            <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-xs text-[color:var(--muted)]">
+                Stock disponible: {selectedProduct ? selectedStock : '-'}
+              </p>
+              <button
+                type="button"
+                onClick={addInventoryItem}
+                className="focus-ring inline-flex items-center justify-center gap-2 rounded-md bg-[color:var(--ink)] px-4 py-2.5 text-sm font-semibold text-[color:var(--surface)]"
+              >
+                <FiPlus className="h-4 w-4" />
+                Agregar al ticket
+              </button>
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-[color:var(--line)] bg-[color:var(--canvas)] p-4">
+            <p className="text-sm font-semibold text-[color:var(--ink)]">
+              Producto manual
+            </p>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <TextInput
+                label="Nombre del producto"
+                value={manualDraft.name}
+                onChange={(value) => updateManualDraft('name', value)}
+              />
+              <TextInput
+                label="Precio"
+                type="number"
+                value={manualDraft.price}
+                onChange={(value) => updateManualDraft('price', value)}
+              />
+              <TextInput
+                label="Cantidad"
+                type="number"
+                value={manualDraft.quantity}
+                onChange={(value) => updateManualDraft('quantity', value)}
+              />
+              <label className="mt-7 flex items-center gap-2 text-sm text-[color:var(--ink)]">
+                <input
+                  type="checkbox"
+                  checked={manualDraft.saveToInventory}
+                  onChange={(event) =>
+                    updateManualDraft('saveToInventory', event.target.checked)
+                  }
+                  className="h-4 w-4 rounded border-[color:var(--line)] accent-[color:var(--ink)]"
+                />
+                Guardar tambien en inventario
+              </label>
+            </div>
+            <TextArea
+              label="Descripcion opcional"
+              value={manualDraft.description}
+              onChange={(value) => updateManualDraft('description', value)}
+            />
+            <button
+              type="button"
+              onClick={addManualItem}
+              className="focus-ring mt-3 inline-flex items-center justify-center gap-2 rounded-md border border-[color:var(--line)] bg-[color:var(--surface)] px-4 py-2.5 text-sm font-semibold text-[color:var(--ink)] transition hover:bg-[color:var(--surface-muted)]"
+            >
+              <FiPlus className="h-4 w-4" />
+              Agregar manual al ticket
+            </button>
+          </div>
+        </div>
+      </TicketSection>
+
+      <TicketSection eyebrow="Paso 3" title="Productos en este ticket">
+        {safeCartItems.length ? (
+          <div className="space-y-3">
+            {safeCartItems.map((item) => (
               <div
                 key={item.id}
-                className="flex items-center justify-between gap-3 rounded-md bg-[color:var(--canvas)] p-3"
+                className="flex items-start justify-between gap-3 rounded-md bg-[color:var(--canvas)] p-3"
               >
                 <div className="min-w-0">
                   <p className="truncate text-sm font-semibold text-[color:var(--ink)]">
                     {item.name}
                   </p>
-                  <p className="text-xs text-[color:var(--muted)]">
-                    {item.quantity} x {formatCurrency(item.price)}
+                  <p className="mt-1 text-xs text-[color:var(--muted)]">
+                    {item.source || 'Inventario'} · Cantidad: {item.quantity} ·{' '}
+                    {formatCurrency(item.price)} c/u
                   </p>
+                  {item.description ? (
+                    <p className="mt-1 line-clamp-2 text-xs text-[color:var(--muted)]">
+                      {item.description}
+                    </p>
+                  ) : null}
                 </div>
-                <p className="text-sm font-semibold text-[color:var(--ink)]">
-                  {formatCurrency(item.subtotal)}
-                </p>
+                <div className="flex shrink-0 items-start gap-3">
+                  <p className="text-sm font-semibold text-[color:var(--ink)]">
+                    {formatCurrency(item.subtotal)}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => removeItem(item.id)}
+                    className="focus-ring rounded-md p-2 text-[color:var(--muted)] transition hover:bg-[color:var(--danger)]/10 hover:text-[color:var(--danger)]"
+                    aria-label={`Quitar ${item.name}`}
+                    title="Quitar"
+                  >
+                    <FiTrash2 className="h-4 w-4" />
+                  </button>
+                </div>
               </div>
             ))}
           </div>
+        ) : (
+          <div className="rounded-md bg-[color:var(--canvas)] p-4 text-sm text-[color:var(--muted)]">
+            Todavia no hay productos en este ticket.
+          </div>
+        )}
+      </TicketSection>
+
+      <TicketSection eyebrow="Paso 4" title="Resumen del ticket">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <TextInput
+            label="Monto pagado"
+            type="number"
+            value={form.amountPaid}
+            onChange={(value) => updateForm('amountPaid', value)}
+          />
+          <label className="block">
+            <span className="text-sm font-medium text-[color:var(--ink)]">
+              Estado
+            </span>
+            <select
+              value={form.status}
+              onChange={(event) => updateForm('status', event.target.value)}
+              className="focus-ring mt-2 w-full rounded-md border border-[color:var(--line)] bg-[color:var(--surface)] px-3 py-3 text-sm text-[color:var(--ink)] outline-none"
+            >
+              {saleStatuses.map((status) => (
+                <option key={status}>{status}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+        {statusHint ? (
+          <p className="text-xs text-[color:var(--muted)]">{statusHint}</p>
         ) : null}
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-3">
-        <TextInput
-          label="Monto pagado"
-          type="number"
-          value={form.amountPaid}
-          onChange={(value) => updateForm('amountPaid', value)}
+        <Summary total={total} paid={amountPaid} balance={balance} />
+        <TextArea
+          label="Notas"
+          value={form.notes}
+          onChange={(value) => updateForm('notes', value)}
         />
-        <label className="block">
-          <span className="text-sm font-medium text-[color:var(--ink)]">
-            Estado
-          </span>
-          <select
-            value={form.status}
-            onChange={(event) => updateForm('status', event.target.value)}
-            className="focus-ring mt-2 w-full rounded-md border border-[color:var(--line)] bg-[color:var(--surface)] px-3 py-3 text-sm text-[color:var(--ink)] outline-none"
-          >
-            {saleStatuses.map((status) => (
-              <option key={status}>{status}</option>
-            ))}
-          </select>
-        </label>
-        <label className="block">
-          <span className="text-sm font-medium text-[color:var(--ink)]">
-            Metodo
-          </span>
-          <select
-            value={form.method}
-            onChange={(event) => updateForm('method', event.target.value)}
-            className="focus-ring mt-2 w-full rounded-md border border-[color:var(--line)] bg-[color:var(--surface)] px-3 py-3 text-sm text-[color:var(--ink)] outline-none"
-          >
-            {PAYMENT_METHODS.map((method) => (
-              <option key={method}>{method}</option>
-            ))}
-          </select>
-        </label>
-      </div>
-
-      <Summary total={total} paid={amountPaid} balance={balance} />
-      <TextArea
-        label="Notas"
-        value={form.notes}
-        onChange={(value) => updateForm('notes', value)}
-      />
+      </TicketSection>
       <ModalError error={error} />
     </ModalShell>
+  )
+}
+
+function TicketSection({ eyebrow, title, children }) {
+  return (
+    <section className="rounded-lg border border-[color:var(--line)] bg-[color:var(--surface)] p-4">
+      <div className="mb-4">
+        <p className="text-xs uppercase text-[color:var(--muted)]">{eyebrow}</p>
+        <h3 className="mt-1 text-base font-semibold text-[color:var(--ink)]">
+          {title}
+        </h3>
+      </div>
+      <div className="space-y-4">{children}</div>
+    </section>
   )
 }
 
@@ -1060,8 +1330,10 @@ function AbonoModal({ isOpen, clients, sales, onClose, onSave }) {
     notes: '',
   })
   const [error, setError] = useState('')
-  const clientSales = sales.filter((sale) => sale.clientId === form.clientId)
-  const selectedSale = sales.find((sale) => sale.id === form.saleId)
+  const safeClients = safeList(clients)
+  const safeSales = safeList(sales)
+  const clientSales = safeSales.filter((sale) => sale.clientId === form.clientId)
+  const selectedSale = safeSales.find((sale) => sale.id === form.saleId)
   const amount = Number(form.amount || 0)
   const nextBalance = Math.max(Number(selectedSale?.balance || 0) - amount, 0)
 
@@ -1117,7 +1389,7 @@ function AbonoModal({ isOpen, clients, sales, onClose, onSave }) {
             className="focus-ring mt-2 w-full rounded-md border border-[color:var(--line)] bg-[color:var(--surface)] px-3 py-3 text-sm text-[color:var(--ink)] outline-none"
           >
             <option value="">Seleccionar clienta</option>
-            {clients.map((client) => (
+            {safeClients.map((client) => (
               <option key={client.id} value={client.id}>
                 {client.name}
               </option>
@@ -1186,7 +1458,13 @@ function AbonoModal({ isOpen, clients, sales, onClose, onSave }) {
   )
 }
 
-function ModalShell({ title, onClose, onSubmit, children }) {
+function ModalShell({
+  title,
+  onClose,
+  onSubmit,
+  children,
+  submitLabel = 'Guardar',
+}) {
   return (
     <AnimatePresence>
       <motion.div
@@ -1235,7 +1513,7 @@ function ModalShell({ title, onClose, onSubmit, children }) {
               type="submit"
               className="focus-ring rounded-md bg-[color:var(--ink)] px-5 py-3 text-sm font-semibold text-[color:var(--surface)] transition hover:-translate-y-0.5 hover:shadow-lg"
             >
-              Guardar
+              {submitLabel}
             </button>
           </div>
         </motion.form>
