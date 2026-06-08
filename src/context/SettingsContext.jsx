@@ -4,26 +4,41 @@ import { useCloudStorage } from '../hooks/useCloudStorage'
 import { STORAGE_KEYS } from '../utils/storage'
 import { SettingsContext } from './SettingsContextValue'
 
+const isObjectRecord = (value) =>
+  value !== null && typeof value === 'object' && !Array.isArray(value)
+
+const normalizeSettings = (value) => ({
+  ...defaultSettings,
+  ...(isObjectRecord(value) ? value : {}),
+})
+
 export function SettingsProvider({ children }) {
   const [settings, setSettings] = useCloudStorage(
     STORAGE_KEYS.settings,
     defaultSettings,
     'settings',
   )
+  const safeSettings = useMemo(() => normalizeSettings(settings), [settings])
 
   useEffect(() => {
-    document.documentElement.classList.toggle('dark', Boolean(settings.darkMode))
-    document.body.dataset.theme = settings.theme || 'mossi'
-    document.title = `${settings.storeName || 'Mossi Shop'} Inventory`
-  }, [settings])
+    document.documentElement.classList.toggle(
+      'dark',
+      Boolean(safeSettings.darkMode),
+    )
+    document.body.dataset.theme = safeSettings.theme || 'mossi'
+    document.title = `${safeSettings.storeName || 'Mossi Shop'} Inventory`
+  }, [safeSettings])
 
   const value = useMemo(() => {
     const updateSettings = (nextSettings) => {
-      setSettings((current) => ({ ...current, ...nextSettings }))
+      setSettings((current) => ({
+        ...normalizeSettings(current),
+        ...(isObjectRecord(nextSettings) ? nextSettings : {}),
+      }))
     }
 
-    return { settings, updateSettings }
-  }, [setSettings, settings])
+    return { settings: safeSettings, updateSettings }
+  }, [setSettings, safeSettings])
 
   return (
     <SettingsContext.Provider value={value}>

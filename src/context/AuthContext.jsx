@@ -6,8 +6,21 @@ import { getFirebaseAuth, isFirebaseConfigured } from '../services/firebase'
 import { STORAGE_KEYS } from '../utils/storage'
 import { AuthContext } from './AuthContextValue'
 
+const isObjectRecord = (value) =>
+  value !== null && typeof value === 'object' && !Array.isArray(value)
+
+const normalizeUser = (value) =>
+  isObjectRecord(value) && value.email
+    ? {
+        email: String(value.email),
+        name: value.name || value.email,
+        role: value.role || 'admin',
+      }
+    : null
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useLocalStorage(STORAGE_KEYS.auth, null)
+  const safeUser = useMemo(() => normalizeUser(user), [user])
 
   const value = useMemo(() => {
     const login = async (email, password) => {
@@ -70,8 +83,8 @@ export function AuthProvider({ children }) {
       setUser(null)
     }
 
-    return { user, login, logout }
-  }, [setUser, user])
+    return { user: safeUser, login, logout }
+  }, [setUser, safeUser])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

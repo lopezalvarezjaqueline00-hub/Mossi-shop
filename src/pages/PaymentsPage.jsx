@@ -181,7 +181,8 @@ export default function PaymentsPage({
 
     return [...safeSales]
       .filter((sale) => {
-        const itemText = sale.items?.map((item) => item.name).join(' ') || ''
+        const saleItems = Array.isArray(sale.items) ? sale.items : []
+        const itemText = saleItems.map((item) => item.name).join(' ')
         const searchable = normalizeText(
           `${sale.clientName} ${sale.ticketNumber} ${sale.status} ${itemText}`,
         )
@@ -360,7 +361,9 @@ export default function PaymentsPage({
       addMovement({
         type: 'venta',
         title: `Venta ${client.name}`,
-        description: `${finalSale.items.length} articulos vendidos`,
+        description: `${
+          Array.isArray(finalSale.items) ? finalSale.items.length : 0
+        } articulos vendidos`,
         amount: finalSale.total,
         createdBy: getAdminName(user),
       })
@@ -705,6 +708,8 @@ function SectionHeader({ eyebrow, title }) {
 }
 
 function SaleRow({ sale, onDelete }) {
+  const saleItems = Array.isArray(sale.items) ? sale.items : []
+
   return (
     <motion.article
       layout
@@ -722,7 +727,7 @@ function SaleRow({ sale, onDelete }) {
             <StatusBadge status={sale.status} />
           </div>
           <p className="mt-1 text-sm text-[color:var(--muted)]">
-            {sale.ticketNumber} · {sale.items.length} articulos ·{' '}
+            {sale.ticketNumber} · {saleItems.length} articulos ·{' '}
             {formatDate(`${sale.saleDate}T12:00:00`)}
           </p>
         </div>

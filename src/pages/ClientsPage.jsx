@@ -187,6 +187,8 @@ export default function ClientsPage() {
 
 function ClientCard({ summary, onDelete }) {
   const { client, sales, payments, pending } = summary
+  const safeSales = Array.isArray(sales) ? sales : []
+  const safePayments = Array.isArray(payments) ? payments : []
 
   return (
     <article className="rounded-lg border border-[color:var(--line)] bg-[color:var(--surface)] p-5 shadow-sm">
@@ -210,13 +212,13 @@ function ClientCard({ summary, onDelete }) {
       </div>
 
       <div className="mt-4 grid grid-cols-3 gap-2 rounded-lg bg-[color:var(--canvas)] p-3 text-sm">
-        <Amount label="Compras" value={sales.length} />
-        <Amount label="Pagos" value={payments.length} />
+        <Amount label="Compras" value={safeSales.length} />
+        <Amount label="Pagos" value={safePayments.length} />
         <Amount label="Pendiente" value={formatCurrency(pending)} />
       </div>
 
       <div className="mt-4 space-y-3">
-        {sales.slice(0, 3).map((sale) => (
+        {safeSales.slice(0, 3).map((sale) => (
           <div
             key={sale.id}
             className="rounded-md border border-[color:var(--line)] p-3"
